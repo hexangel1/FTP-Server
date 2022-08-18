@@ -1,0 +1,8 @@
+*.o
+*.a
+*.bin
+*.mk
+*.tar
+*.swp
+tags
+ftpd
