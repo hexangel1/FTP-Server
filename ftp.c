@@ -23,14 +23,14 @@ static const char *const user_table[] = {
         "anonymous", "admin"
 };
 
-static enum ftp_command search_command(const char *cmd_name)
+static int search_command(const char *cmd_name)
 {
         int i;
         for (i = 0; i < sizeof(cmd_table) / sizeof(*cmd_table); i++) {
                 if (!strcmp(cmd_table[i], cmd_name))
                         return i;
         }
-        return INVALID_CMD;
+        return -1;
 }
 
 static int check_username(const char *username)
@@ -43,13 +43,10 @@ static int check_username(const char *username)
         return 0;
 }
 
-static struct ftp_request *parse_command(const char *cmdstring)
+static void parse_command(struct ftp_request *ftp_req, const char *cmdstring)
 {
-        char cmd_name[8];
-        struct ftp_request *ftp_req = malloc(sizeof(*ftp_req));
-        sscanf(cmdstring, "%7s %s", cmd_name, ftp_req->arg);
-        ftp_req->cmd = search_command(cmd_name);
-        return ftp_req;
+        sscanf(cmdstring, "%7s %s", ftp_req->cmd, ftp_req->arg);
+        ftp_req->cmd_idx = search_command(ftp_req->cmd);
 }
 
 static int child_process(const char *filename, struct session *ptr)
@@ -202,43 +199,27 @@ static void ftp_user(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
+static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
+{
+        send_string(ptr, "500 Not implemented\n");
+}
+
 void execute_cmd(struct session *ptr, const char *cmdstring)
 {
-        struct ftp_request *ftp_req = parse_command(cmdstring);
-        switch (ftp_req->cmd) {
-        case NOOP:
-                ftp_noop(ftp_req, ptr);
-                break;
-        case PASS:
-                ftp_pass(ftp_req, ptr);
-                break;
-        case PASV:
-                ftp_pasv(ftp_req, ptr);
-                break;
-        case PORT:
-                ftp_port(ftp_req, ptr);
-                break;
-        case QUIT:
-                ftp_quit(ftp_req, ptr);
-                break;
-        case RETR:
-                ftp_retr(ftp_req, ptr);
-                break;
-        case SYST:
-                ftp_syst(ftp_req, ptr);
-                break;
-        case TYPE:
-                ftp_type(ftp_req, ptr);
-                break;
-        case USER:
-                ftp_user(ftp_req, ptr);
-                break;
-        case INVALID_CMD:
+        static const ftp_handler handlers[] = {
+                ftp_fail, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
+                ftp_fail, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
+                ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_fail,
+                ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
+                ftp_fail, ftp_fail, ftp_fail, ftp_syst, ftp_type,
+                ftp_user
+        };
+        struct ftp_request ftp_req;
+        parse_command(&ftp_req, cmdstring);
+        if (ftp_req.cmd_idx == -1) {
                 send_string(ptr, "500 Unknown command\n");
-                break;
-        default:
-                send_string(ptr, "500 Not implemented\n");
+                return;
         }
-        free(ftp_req);
+        handlers[ftp_req.cmd_idx](&ftp_req, ptr);
 }
 
