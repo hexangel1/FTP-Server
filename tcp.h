@@ -24,6 +24,8 @@ struct session {
         int logged_in;
         int mode;
         int sock_pasv;
+        int tr_port;
+        char tr_ip[32];
         int tr_pid;
         enum fsm_state flag;
         struct session *next;
@@ -44,5 +46,6 @@ void tcp_server_listen(struct tcp_server *serv);
 int create_socket(const char *ipaddr, unsigned short port);
 int accept_conn(int ls);
 const char *get_host_ip(int sock);
+int create_conn(const char *ip, unsigned short port);
 
 #endif

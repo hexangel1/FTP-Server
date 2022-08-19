@@ -52,6 +52,35 @@ static struct ftp_request *parse_command(const char *cmdstring)
         return ftp_req;
 }
 
+static int child_process(const char *filename, struct session *ptr)
+{
+        int conn, fd;
+        struct stat stat_buf;
+        send_string(ptr, "150 Opening BINARY mode data connection.\n");
+        if (ptr->mode == st_server)
+                conn = accept_conn(ptr->sock_pasv);
+        else
+                conn = create_conn(ptr->tr_ip, ptr->tr_port);
+        if (conn == -1) {
+                perror("accept");
+                send_string(ptr, "500 Internal Server Error\n");
+                return 1;
+        }
+        fd = open(filename, O_RDONLY);
+        if (fd == -1) {
+                perror("open");
+                send_string(ptr, "550 Failed to get file\n");
+                return 1;
+        }
+        fstat(fd, &stat_buf); 
+        sendfile(conn, fd, NULL, stat_buf.st_size);
+        shutdown(conn, 2);
+        close(conn);
+        close(fd);
+        send_string(ptr, "226 File send OK.\n");
+        return 0;
+}
+
 static void ftp_noop(struct ftp_request *ftp_req, struct session *ptr)
 {
         send_string(ptr, "200 NOOP OK!\n");
@@ -91,6 +120,22 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
         ptr->mode = st_server;
 }
 
+static void ftp_port(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int ip[4], port[2];
+        if (!ptr->logged_in) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        send_string(ptr, "227 Entering Active Mode\n");
+        sscanf(ftp_req->arg ,"%d,%d,%d,%d,%d,%d",
+                     &ip[0], &ip[1], &ip[2], &ip[3], &port[0], &port[1]);
+        sprintf(ptr->tr_ip, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        ptr->tr_port = (port[0] << 8) + port[1];
+        fprintf(stderr, "%s:%d\n", ptr->tr_ip, ptr->tr_port);
+        ptr->mode = st_client;
+}
+
 static void ftp_quit(struct ftp_request *ftp_req, struct session *ptr)
 {
         send_string(ptr, "221 Goodbye!\n");
@@ -104,6 +149,10 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "530 Please login with USER and PASS.\n");
                 return;
         }
+        if (ptr->mode == st_normal) {
+                send_string(ptr, "530 Please select mode with PASV or PORT\n");
+                return;
+        }
         pid = fork();
         if (pid == -1) {
                 perror("fork");
@@ -111,32 +160,15 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
                 return;
         }
         if (pid == 0) {
-                int conn, fd;
-                struct stat stat_buf;
-                send_string(ptr, "150 Opening BINARY mode data connection.\n");
-                conn = accept_conn(ptr->sock_pasv);
-                if (conn == -1) {
-                        perror("accept");
-                        send_string(ptr, "500 Internal Server Error\n");
-                        exit(1);
-                }
-                fd = open(ftp_req->arg, O_RDONLY);
-                if (fd == -1) {
-                        perror("open");
-                        send_string(ptr, "550 Failed to get file\n");
-                        exit(1);
-                }
-                fstat(fd, &stat_buf); 
-                sendfile(conn, fd, NULL, stat_buf.st_size);
-                shutdown(conn, 2);
-                close(conn);
-                close(fd);
-                send_string(ptr, "226 File send OK.\n");
-                exit(0);
+                int status = child_process(ftp_req->arg, ptr);
+                exit(status);
+        }
+        if (ptr->mode == st_server) {
+                close(ptr->sock_pasv);
+                ptr->sock_pasv = -1;
         }
         ptr->mode = st_normal;
         ptr->tr_pid = pid;
-        close(ptr->sock_pasv);
 }
 
 static void ftp_syst(struct ftp_request *ftp_req, struct session *ptr)
@@ -182,6 +214,9 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
                 break;
         case PASV:
                 ftp_pasv(ftp_req, ptr);
+                break;
+        case PORT:
+                ftp_port(ftp_req, ptr);
                 break;
         case QUIT:
                 ftp_quit(ftp_req, ptr);

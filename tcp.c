@@ -57,7 +57,7 @@ static void delete_session(struct session *sess)
                 shutdown(sess->sock_pasv, 2);
                 close(sess->sock_pasv);
         }
-        if (sess->tr_pid != -1)
+        if (sess->tr_pid > 0)
                 kill(sess->tr_pid, SIGKILL);
         if (sess->username)
                 free(sess->username);
@@ -300,6 +300,29 @@ int accept_conn(int ls)
         int sockfd = accept(ls, (struct sockaddr *)&addr, &addrlen);
         shutdown(ls, 2);
         close(ls);
+        return sockfd;
+}
+
+int create_conn(const char *ipaddr, unsigned short port)
+{
+        int sockfd, res;
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port);
+        if (!inet_aton(ipaddr, &(addr.sin_addr))) {
+                fprintf(stderr,"Invalid ip address\n");
+                return -1;
+        }
+        sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        if (sockfd == -1) {
+                perror("socket");
+                return -1;
+        }
+        res = connect(sockfd, (struct sockaddr*)&addr, sizeof(addr));
+        if (res == -1) {
+                perror("connect");
+                return -1;
+        }
         return sockfd;
 }
 
