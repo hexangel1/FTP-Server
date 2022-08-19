@@ -78,6 +78,44 @@ static int child_proc_tx(const char *filename, struct session *ptr)
         return 0;
 }
 
+static int child_proc_rx(const char *filename, struct session *ptr)
+{
+        int res, conn, fd, fds[2];
+        size_t buff_size = getpagesize();
+        if (ptr->mode == st_server)
+                conn = accept_conn(ptr->sock_pasv);
+        else
+                conn = create_conn(ptr->tr_ip, ptr->tr_port);
+        if (conn == -1) {
+                send_string(ptr, "451 Internal Server Error\n");
+                return 1;
+        }        
+        fd = open(filename, O_WRONLY | O_CREAT, 0644);
+        if (fd == -1) {
+                perror("open");
+                send_string(ptr, "550 No such file or directory.\n");
+                return 1;
+        }
+        res = pipe(fds);
+        if (res == -1) {
+                perror("pipe");
+                return 1;
+        }
+        send_string(ptr, "125 Channel open, data exchange started\n");
+        while (splice(conn, NULL, fds[1], NULL, buff_size,
+                      SPLICE_F_MORE | SPLICE_F_MOVE) > 0) {
+                splice(fds[0], NULL, fd, NULL, buff_size,
+                       SPLICE_F_MORE | SPLICE_F_MOVE);
+        }
+        shutdown(conn, 2);
+        close(conn);
+        close(fds[1]);
+        close(fds[0]);
+        close(fd);
+        send_string(ptr, "226 File send OK.\n");
+        return 0;
+}
+
 static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (!ptr->logged_in) {
@@ -180,6 +218,35 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
         ptr->tr_pid = pid;
 }
 
+static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int pid;
+        if (!ptr->logged_in) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        if (ptr->mode == st_normal) {
+                send_string(ptr, "504 Please select mode with PASV or PORT\n");
+                return;
+        }
+        pid = fork();
+        if (pid == -1) {
+                perror("fork");
+                send_string(ptr, "500 Internal Server Error\n");
+                return;
+        }
+        if (pid == 0) {
+                int status = child_proc_rx(ftp_req->arg, ptr);
+                exit(status);
+        }
+        if (ptr->mode == st_server) {
+                close(ptr->sock_pasv);
+                ptr->sock_pasv = -1;
+        }
+        ptr->mode = st_normal;
+        ptr->tr_pid = pid;
+}
+
 static void ftp_syst(struct ftp_request *ftp_req, struct session *ptr)
 {
         send_string(ptr, "200 *nix\n");
@@ -223,7 +290,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
                 ftp_fail, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_fail,
                 ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
-                ftp_fail, ftp_fail, ftp_fail, ftp_syst, ftp_type,
+                ftp_fail, ftp_fail, ftp_stor, ftp_syst, ftp_type,
                 ftp_user
         };
         struct ftp_request ftp_req;
