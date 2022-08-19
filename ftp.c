@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -20,7 +21,7 @@ static const char *const cmd_table[] = {
 };
 
 static const char *const user_table[] = {
-        "anonymous", "admin"
+        "anonymous", "admin", "user", "test"
 };
 
 static int search_command(const char *cmd_name)
@@ -49,18 +50,16 @@ static void parse_command(struct ftp_request *ftp_req, const char *cmdstring)
         ftp_req->cmd_idx = search_command(ftp_req->cmd);
 }
 
-static int child_process(const char *filename, struct session *ptr)
+static int child_proc_tx(const char *filename, struct session *ptr)
 {
         int conn, fd;
         struct stat stat_buf;
-        send_string(ptr, "150 Opening BINARY mode data connection.\n");
         if (ptr->mode == st_server)
                 conn = accept_conn(ptr->sock_pasv);
         else
                 conn = create_conn(ptr->tr_ip, ptr->tr_port);
         if (conn == -1) {
-                perror("accept");
-                send_string(ptr, "500 Internal Server Error\n");
+                send_string(ptr, "451 Internal Server Error\n");
                 return 1;
         }
         fd = open(filename, O_RDONLY);
@@ -69,13 +68,26 @@ static int child_process(const char *filename, struct session *ptr)
                 send_string(ptr, "550 Failed to get file\n");
                 return 1;
         }
-        fstat(fd, &stat_buf); 
+        fstat(fd, &stat_buf);
+        send_string(ptr, "125 Channel open, data exchange started\n");
         sendfile(conn, fd, NULL, stat_buf.st_size);
         shutdown(conn, 2);
         close(conn);
         close(fd);
-        send_string(ptr, "226 File send OK.\n");
+        send_string(ptr, "226 File send OK.\n"); 
         return 0;
+}
+
+static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
+{
+        if (!ptr->logged_in) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        if (ptr->tr_pid > 0) {
+                kill(ptr->tr_pid, SIGKILL);
+                send_string(ptr, "226 Closing data connection.\n");
+        }
 }
 
 static void ftp_noop(struct ftp_request *ftp_req, struct session *ptr)
@@ -147,7 +159,7 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
                 return;
         }
         if (ptr->mode == st_normal) {
-                send_string(ptr, "530 Please select mode with PASV or PORT\n");
+                send_string(ptr, "504 Please select mode with PASV or PORT\n");
                 return;
         }
         pid = fork();
@@ -157,7 +169,7 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
                 return;
         }
         if (pid == 0) {
-                int status = child_process(ftp_req->arg, ptr);
+                int status = child_proc_tx(ftp_req->arg, ptr);
                 exit(status);
         }
         if (ptr->mode == st_server) {
@@ -201,13 +213,13 @@ static void ftp_user(struct ftp_request *ftp_req, struct session *ptr)
 
 static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
 {
-        send_string(ptr, "500 Not implemented\n");
+        send_string(ptr, "202 Not implemented\n");
 }
 
 void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
-                ftp_fail, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
+                ftp_abor, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
                 ftp_fail, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_fail,
                 ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
@@ -217,7 +229,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
         struct ftp_request ftp_req;
         parse_command(&ftp_req, cmdstring);
         if (ftp_req.cmd_idx == -1) {
-                send_string(ptr, "500 Unknown command\n");
+                send_string(ptr, "202 Unknown command\n");
                 return;
         }
         handlers[ftp_req.cmd_idx](&ftp_req, ptr);

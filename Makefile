@@ -4,7 +4,7 @@ HEADERS = $(filter-out main.h, $(SOURCES:.c=.h))
 OBJECTS = $(SOURCES:.c=.o)
 SPECIAL = Makefile README.md LICENSE
 CC = gcc
-CFLAGS = -Wall -g -pedantic
+CFLAGS = -Wall -g -ansi -pedantic -D _GNU_SOURCE
 LDLIBS = 
 CTAGS = ctags
 ARGV = 127.0.0.1 2000
@@ -16,7 +16,7 @@ $(PROJECT): $(OBJECTS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(PROJECT).tar: $(SOURCES) $(HEADERS) $(SPECIAL)
-	tar -cvf $@ $(SOURCES) $(HEADERS) $(SPECIAL)
+	tar -cf $@ $(SOURCES) $(HEADERS) $(SPECIAL)
 
 deps.mk: $(SOURCES) Makefile
 	$(CC) -MM $(SOURCES) > $@
