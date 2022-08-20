@@ -5,16 +5,18 @@
 #define ADDRESS_LEN 32
 
 enum signal_event {
-        sigev_no_events = 0,
-        sigev_terminate = 1,
-        sigev_restart   = 2,
-        sigev_childexit = 3
+        sigev_no_events,
+        sigev_terminate,
+        sigev_restart,
+        sigev_childexit
 };
 
 enum fsm_state {
+        st_login,
+        st_passwd,
         st_normal,
-        st_client,
-        st_server,
+        st_active,
+        st_passive,
         st_goodbye
 };
 
@@ -24,13 +26,11 @@ struct session {
         char buf[INBUFSIZE];
         char address[ADDRESS_LEN];
         char *username;
-        int logged_in;
-        int mode;
         int sock_pasv;
-        int tr_port;
-        char tr_ip[32];
+        int port_actv;
+        char ip_actv[32];
         int txrx_pid;
-        enum fsm_state flag;
+        enum fsm_state state;
         struct session *next;
 };
 

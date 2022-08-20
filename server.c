@@ -32,7 +32,7 @@ static void set_sigactions(sigset_t *orig_mask)
         sigfillset(&sa.sa_mask);
         sa.sa_flags = 0;
         sigaction(SIGPIPE, &sa, NULL);
-        sa.sa_handler = &signal_handler;
+        sa.sa_handler = signal_handler;
         sigaction(SIGINT, &sa, NULL);
         sigaction(SIGUSR1, &sa, NULL);
         sigaction(SIGUSR2, &sa, NULL);
@@ -53,11 +53,11 @@ static void create_session(struct session **sess, int fd, const char *addr)
         tmp->buf_used = 0;
         strncpy(tmp->address, addr, sizeof(tmp->address));
         tmp->username = 0;
-        tmp->logged_in = 0;
-        tmp->mode = 0;
         tmp->sock_pasv = -1;
+        tmp->port_actv = 0;
+        memset(tmp->ip_actv, 0, sizeof(tmp->ip_actv));
         tmp->txrx_pid = 0;
-        tmp->flag = st_normal;
+        tmp->state = st_login;
         tmp->next = *sess;
         *sess = tmp;
         send_string(tmp, ftp_greet_message);
@@ -89,7 +89,7 @@ static void delete_finished_sessions(struct session **sess)
 {
         struct session *tmp;
         while (*sess) {
-                if ((*sess)->flag == st_goodbye) {
+                if ((*sess)->state == st_goodbye) {
                         tmp = *sess;
                         *sess = (*sess)->next;
                         delete_session(tmp);
@@ -119,28 +119,7 @@ static void remove_zombies(struct session *sess)
         }
 }
 
-static int handle_signal_event(struct tcp_server *serv)
-{
-        enum signal_event event = sig_event_flag;
-        sig_event_flag = sigev_no_events;
-        switch (event) {
-        case sigev_terminate:
-                delete_all_sessions(serv->sess);
-                return 1;
-        case sigev_restart:
-                delete_all_sessions(serv->sess);
-                serv->sess = NULL;
-                return 0;
-        case sigev_childexit:
-                remove_zombies(serv->sess);
-                return 0;
-        case sigev_no_events:
-                ;
-        }
-        return 0;
-}
-
-static void check_lf(struct session *ptr, struct tcp_server *serv)
+static void check_lf(struct session *ptr)
 {
         int pos, i;
         char *str;
@@ -167,16 +146,16 @@ static void check_lf(struct session *ptr, struct tcp_server *serv)
         }
 }
 
-static void receive_data(struct session *ptr, struct tcp_server *serv)
+static void receive_data(struct tcp_server *serv, struct session *ptr)
 {
         int rc, busy = ptr->buf_used;
         rc = tcp_recv(ptr->socket_d, ptr->buf + busy, INBUFSIZE - busy);
         if (rc <= 0) {
-                ptr->flag = st_goodbye;
+                ptr->state = st_goodbye;
                 return;
         }
         ptr->buf_used += rc;
-        check_lf(ptr, serv);
+        check_lf(ptr);
         if (ptr->buf_used >= INBUFSIZE) {
                 send_string(ptr, ftp_error_message);
                 ptr->buf_used = 0;
@@ -192,6 +171,27 @@ static void accept_connection(struct tcp_server *serv)
                 fprintf(stderr, "connection from %s\n", address);
                 create_session(&serv->sess, sockfd, address);
         }
+}
+
+static int handle_signal_event(struct tcp_server *serv)
+{
+        enum signal_event event = sig_event_flag;
+        sig_event_flag = sigev_no_events;
+        switch (event) {
+        case sigev_terminate:
+                delete_all_sessions(serv->sess);
+                return 1;
+        case sigev_restart:
+                delete_all_sessions(serv->sess);
+                serv->sess = NULL;
+                return 0;
+        case sigev_childexit:
+                remove_zombies(serv->sess);
+                return 0;
+        case sigev_no_events:
+                ;
+        }
+        return 0;
 }
 
 void tcp_server_handle(struct tcp_server *serv)
@@ -225,7 +225,7 @@ void tcp_server_handle(struct tcp_server *serv)
                         accept_connection(serv);
                 for (tmp = serv->sess; tmp; tmp = tmp->next) {
                         if (FD_ISSET(tmp->socket_d, &readfds))
-                                receive_data(tmp, serv);
+                                receive_data(serv, tmp);
                 }
                 delete_finished_sessions(&serv->sess);
         }
