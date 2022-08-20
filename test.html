@@ -1,0 +1,37 @@
+<h1>Simple FTP Server</h1>
+
+<h2>Поддерживамые команды</h2>
+
+<ul>
+<li>ABOR</li>
+<li>NOOP</li>
+<li>PASS</li>
+<li>PASV</li>
+<li>PORT</li>
+<li>QUIT</li>
+<li>STOR</li>
+<li>SYST</li>
+<li>TYPE</li>
+<li>USER</li>
+</ul>
+
+<h2>Установка и запуск</h2>
+
+<ul>
+<li>Перейдите директорию с проектом и выполните команду <code>make</code> <br />
+<code>$ cd ftp &amp;&amp; make</code></li>
+<li>Для запуска ftp сервера выполните команду <code>./ftpd</code> передав ip адрес и порт
+в аргументах командной строки <br />
+<code>$ ./ftpd 127.0.0.1 2000</code></li>
+</ul>
+
+<h2>make команды</h2>
+
+<ul>
+<li><code>make ftpd</code> - выполняет сборку проекта</li>
+<li><code>make run</code> - выполняет сборку и осуществляет запуск проекта</li>
+<li><code>make memcheck</code> - запускает проект с valgrind</li>
+<li><code>make tags</code> - генерирует tags файлы для работы в vim</li>
+<li><code>make tar</code> - создает tar архив с файлами проекта</li>
+<li><code>make clean</code> - выполняет очистку от мусорных файлов</li>
+</ul>
