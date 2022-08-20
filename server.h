@@ -3,10 +3,11 @@
 
 #define INBUFSIZE 1024
 
-enum signal_events {
+enum signal_event {
         sigev_no_events = 0,
         sigev_terminate = 1,
-        sigev_restart   = 2
+        sigev_restart   = 2,
+        sigev_childexit = 3
 };
 
 enum fsm_state {
@@ -26,7 +27,7 @@ struct session {
         int sock_pasv;
         int tr_port;
         char tr_ip[32];
-        int tr_pid;
+        int txrx_pid;
         enum fsm_state flag;
         struct session *next;
 };

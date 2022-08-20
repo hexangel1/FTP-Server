@@ -111,8 +111,9 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "530 Please login with USER and PASS.\n");
                 return;
         }
-        if (ptr->tr_pid > 0) {
-                kill(ptr->tr_pid, SIGKILL);
+        if (ptr->txrx_pid > 0) {
+                kill(ptr->txrx_pid, SIGKILL);
+                ptr->txrx_pid = 0;
                 send_string(ptr, "226 Closing data connection.\n");
         }
 }
@@ -178,7 +179,7 @@ static void ftp_quit(struct ftp_request *ftp_req, struct session *ptr)
 
 static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
 {
-        int pid;
+        int pid, status;
         if (!ptr->logged_in) {
                 send_string(ptr, "530 Please login with USER and PASS.\n");
                 return;
@@ -187,33 +188,8 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "504 Please select mode with PASV or PORT\n");
                 return;
         }
-        pid = fork();
-        if (pid == -1) {
-                perror("fork");
-                send_string(ptr, "500 Internal Server Error\n");
-                return;
-        }
-        if (pid == 0) {
-                int status = child_proc_tx(ftp_req->arg, ptr);
-                exit(status);
-        }
-        if (ptr->mode == st_server) {
-                close(ptr->sock_pasv);
-                ptr->sock_pasv = -1;
-        }
-        ptr->mode = st_normal;
-        ptr->tr_pid = pid;
-}
-
-static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
-{
-        int pid;
-        if (!ptr->logged_in) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
-                return;
-        }
-        if (ptr->mode == st_normal) {
-                send_string(ptr, "504 Please select mode with PASV or PORT\n");
+        if (ptr->txrx_pid > 0) {
+                send_string(ptr, "451 Wait transmission to finish\n");
                 return;
         }
         pid = fork();
@@ -223,7 +199,7 @@ static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
                 return;
         }
         if (pid == 0) {
-                int status = child_proc_rx(ftp_req->arg, ptr);
+                status = child_proc_tx(ftp_req->arg, ptr);
                 exit(status);
         }
         if (ptr->mode == st_server) {
@@ -231,7 +207,40 @@ static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
                 ptr->sock_pasv = -1;
         }
         ptr->mode = st_normal;
-        ptr->tr_pid = pid;
+        ptr->txrx_pid = pid;
+}
+
+static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int pid, status;
+        if (!ptr->logged_in) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        if (ptr->mode == st_normal) {
+                send_string(ptr, "504 Please select mode with PASV or PORT\n");
+                return;
+        }
+        if (ptr->txrx_pid > 0) {
+                send_string(ptr, "451 Wait transmission to finish\n");
+                return;
+        } 
+        pid = fork();
+        if (pid == -1) {
+                perror("fork");
+                send_string(ptr, "451 Internal Server Error\n");
+                return;
+        }
+        if (pid == 0) {
+                status = child_proc_rx(ftp_req->arg, ptr);
+                exit(status);
+        }
+        if (ptr->mode == st_server) {
+                close(ptr->sock_pasv);
+                ptr->sock_pasv = -1;
+        }
+        ptr->mode = st_normal;
+        ptr->txrx_pid = pid;
 }
 
 static void ftp_syst(struct ftp_request *ftp_req, struct session *ptr)

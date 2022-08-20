@@ -21,13 +21,8 @@ static void signal_handler(int signum)
                 sig_event_flag = sigev_terminate;
         else if (signum == SIGUSR2)
                 sig_event_flag = sigev_restart;
-}
-
-static void clean_zombies(int signum)
-{
-        int status;
-        while (wait4(-1, &status, WNOHANG, NULL) > 0)
-                ;
+        else if (signum == SIGCHLD)
+                sig_event_flag = sigev_childexit;
 }
 
 static void create_session(struct session **sess, int fd)
@@ -39,7 +34,7 @@ static void create_session(struct session **sess, int fd)
         tmp->logged_in = 0;
         tmp->mode = 0;
         tmp->sock_pasv = -1;
-        tmp->tr_pid = -1;
+        tmp->txrx_pid = 0;
         tmp->flag = st_normal;
         tmp->next = *sess;
         *sess = tmp;
@@ -50,9 +45,9 @@ static void delete_session(struct session *sess)
 {
         tcp_shutdown(sess->socket_d);
         if (sess->sock_pasv != -1)
-                tcp_shutdown(sess->socket_d);
-        if (sess->tr_pid > 0)
-                kill(sess->tr_pid, SIGKILL);
+                tcp_shutdown(sess->sock_pasv);
+        if (sess->txrx_pid > 0)
+                kill(sess->txrx_pid, SIGKILL);
         if (sess->username)
                 free(sess->username);
         free(sess);
@@ -79,6 +74,26 @@ static void delete_session_list(struct session *sess)
                 tmp = sess;
                 sess = sess->next;
                 delete_session(tmp);
+        }
+}
+
+static void remove_zombies(struct session *sess)
+{
+        int pid, res;
+        struct session *tmp;
+        while ((pid = wait4(-1, &res, WNOHANG, NULL)) > 0) {
+                if (!WIFEXITED(res) && !WIFSIGNALED(res))
+                        continue;
+                if ((WIFEXITED(res) && WEXITSTATUS(res)) || WIFSIGNALED(res))
+                        fprintf(stderr, "[%d] Transmission failed\n", pid);
+                else
+                        fprintf(stderr, "[%d] Transmission success\n", pid);
+                for (tmp = sess; tmp; tmp = tmp->next) {
+                        if (tmp->txrx_pid == pid) {
+                                tmp->txrx_pid = 0;
+                                break;
+                        }
+                }
         }
 }
 
@@ -137,7 +152,7 @@ static void set_sigactions(sigset_t *orig_mask)
         sigaction(SIGINT, &sa, NULL);
         sigaction(SIGUSR1, &sa, NULL);
         sigaction(SIGUSR2, &sa, NULL);
-        sa.sa_handler = &clean_zombies;
+        sa.sa_flags = SA_NOCLDSTOP;
         sigaction(SIGCHLD, &sa, NULL);
         sigemptyset(&mask);
         sigaddset(&mask, SIGINT);
@@ -145,6 +160,27 @@ static void set_sigactions(sigset_t *orig_mask)
         sigaddset(&mask, SIGUSR2);
         sigaddset(&mask, SIGCHLD);
         sigprocmask(SIG_BLOCK, &mask, orig_mask);
+}
+
+static int handle_signal_event(struct tcp_server *serv)
+{
+        enum signal_event event = sig_event_flag;
+        sig_event_flag = sigev_no_events;
+        switch (event) {
+        case sigev_terminate:
+                delete_session_list(serv->sess);
+                return 1;
+        case sigev_restart:
+                delete_session_list(serv->sess);
+                serv->sess = NULL;
+                return 0;
+        case sigev_childexit:
+                remove_zombies(serv->sess);
+                return 0;
+        case sigev_no_events:
+                ;
+        }
+        return 0;
 }
 
 static void accept_connection(struct tcp_server *serv)
@@ -180,20 +216,14 @@ void tcp_server_listen(struct tcp_server *serv)
                                 max_d = tmp->socket_d;
                 }
                 res = pselect(max_d + 1, &readfds, NULL, NULL, NULL, &mask);
+                if (res == -1 && errno != EINTR) {
+                        perror("pselect");
+                        break;
+                }
                 if (res == -1) {
-                        if (errno != EINTR) {
-                                perror("pselect");
-                                exit(1);
-                        }
-                        if (sig_event_flag == sigev_terminate) {
-                                delete_session_list(serv->sess);
+                        res = handle_signal_event(serv);
+                        if (res)
                                 break;
-                        }
-                        if (sig_event_flag == sigev_restart) {
-                                delete_session_list(serv->sess);
-                                serv->sess = NULL;
-                                sig_event_flag = sigev_no_events;
-                        }
                         continue;
                 }
                 if (FD_ISSET(serv->listen_sock, &readfds))
