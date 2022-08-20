@@ -194,7 +194,7 @@ static void accept_connection(struct tcp_server *serv)
         }
 }
 
-void tcp_server_listen(struct tcp_server *serv)
+void tcp_server_handle(struct tcp_server *serv)
 {
         struct session *tmp;
         int res, max_d;
@@ -231,16 +231,6 @@ void tcp_server_listen(struct tcp_server *serv)
         }
 }
 
-struct tcp_server *new_tcp_server(const char *ip, unsigned short port)
-{
-        struct tcp_server *serv = malloc(sizeof(*serv));
-        serv->listen_sock = -1;
-        serv->port = port;
-        serv->ipaddr = strdup(ip);
-        serv->sess = NULL;
-        return serv;
-}
-
 int tcp_server_up(struct tcp_server *serv)
 {
         srand(time(NULL));
@@ -256,6 +246,16 @@ void tcp_server_down(struct tcp_server *serv)
                 tcp_shutdown(serv->listen_sock);
         free(serv->ipaddr);
         free(serv);
+}
+
+struct tcp_server *new_tcp_server(const char *ip, unsigned short port)
+{
+        struct tcp_server *serv = malloc(sizeof(*serv));
+        serv->listen_sock = -1;
+        serv->port = port;
+        serv->ipaddr = strdup(ip);
+        serv->sess = NULL;
+        return serv;
 }
 
 void send_string(struct session *ptr, const char *str)

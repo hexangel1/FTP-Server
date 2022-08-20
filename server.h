@@ -41,10 +41,10 @@ struct tcp_server {
         struct session *sess;
 };
 
-struct tcp_server *new_tcp_server(const char *ip, unsigned short port);
+void tcp_server_handle(struct tcp_server *serv);
 int tcp_server_up(struct tcp_server *serv);
 void tcp_server_down(struct tcp_server *serv);
-void tcp_server_listen(struct tcp_server *serv);
+struct tcp_server *new_tcp_server(const char *ip, unsigned short port);
 void send_string(struct session *ptr, const char *str);
 
 #endif /* SERVER_H_SENTRY */

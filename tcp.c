@@ -105,18 +105,18 @@ void tcp_shutdown(int sockfd)
         close(sockfd);
 }
 
-ssize_t tcp_recv(int sockfd, char *buf, size_t len)
-{
-        return recv(sockfd, buf, len, 0);
-}
-
 ssize_t tcp_send(int sockfd, const char *buf, size_t len)
 {
         return send(sockfd, buf, len, 0);
 }
 
+ssize_t tcp_recv(int sockfd, char *buf, size_t len)
+{
+        return recv(sockfd, buf, len, 0);
+}
+
 #ifdef LINUX
-int tcp_transmit(int conn, int fd)
+int tcp_transmit(int sockfd, int fd)
 {
         struct stat st_buf;
         ssize_t wc;
@@ -126,7 +126,7 @@ int tcp_transmit(int conn, int fd)
                 perror("fstat");
                 return -1;
         }
-        wc = sendfile(conn, fd, NULL, st_buf.st_size);
+        wc = sendfile(sockfd, fd, NULL, st_buf.st_size);
         if (wc != st_buf.st_size) {
                 perror("sendfile");
                 return -1;
@@ -134,12 +134,12 @@ int tcp_transmit(int conn, int fd)
         return 0;
 }
 #else
-int tcp_transmit(int conn, int fd)
+int tcp_transmit(int sockfd, int fd)
 {
         ssize_t rc, wc;
         char buf[4096];
         while ((rc = read(fd, buf, sizeof(buf))) > 0) {
-                wc = send(conn, buf, rc, 0);
+                wc = send(sockfd, buf, rc, 0);
                 if (wc != rc) {
                         perror("write");
                         return -1;
@@ -154,7 +154,7 @@ int tcp_transmit(int conn, int fd)
 #endif
 
 #ifdef LINUX
-int tcp_receive(int conn, int fd)
+int tcp_receive(int sockfd, int fd)
 {
         ssize_t rc;
         int chan_fd[2];
@@ -165,7 +165,7 @@ int tcp_receive(int conn, int fd)
                 perror("pipe");
                 return -1;
         }
-        while ((rc = splice(conn, NULL, chan_fd[1], NULL, buff_size,
+        while ((rc = splice(sockfd, NULL, chan_fd[1], NULL, buff_size,
                       SPLICE_F_MORE | SPLICE_F_MOVE)) > 0) {
                 splice(chan_fd[0], NULL, fd, NULL, buff_size,
                        SPLICE_F_MORE | SPLICE_F_MOVE);
@@ -179,11 +179,11 @@ int tcp_receive(int conn, int fd)
         return 0;
 }
 #else
-int tcp_receive(int conn, int fd)
+int tcp_receive(int sockfd, int fd)
 {
         ssize_t rc, wc;
         char buf[4096];
-        while ((rc = recv(conn, buf, sizeof(buf), 0)) > 0) {
+        while ((rc = recv(sockfd, buf, sizeof(buf), 0)) > 0) {
                 wc = write(fd, buf, rc);
                 if (wc != rc) {
                         perror("write");

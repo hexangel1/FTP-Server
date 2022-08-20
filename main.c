@@ -16,10 +16,9 @@ int main(int argc, char **argv)
                 fputs("Failed to bring server up\n", stderr);
                 exit(1);
         }
-        fputs("server is running\n", stderr);
-        tcp_server_listen(serv);
+        fputs("running...\n", stderr);
+        tcp_server_handle(serv);
         tcp_server_down(serv);
-        fputs("server is stopped\n", stderr);
         return 0;
 }
 
