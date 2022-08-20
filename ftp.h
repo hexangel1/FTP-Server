@@ -3,6 +3,8 @@
 
 #define MIN_PORT_NUM 49152
 #define MAX_PORT_NUM 65535
+#define FTP_GREET_MESSAGE "220 Welcome!\n"
+#define FTP_ERROR_MESSAGE "500 Bad command\n"
 
 struct session;
 

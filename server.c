@@ -6,7 +6,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/select.h>
-#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <errno.h>
 #include <time.h>
 #include "server.h"
@@ -43,7 +43,7 @@ static void create_session(struct session **sess, int fd)
         tmp->flag = st_normal;
         tmp->next = *sess;
         *sess = tmp;
-        send_string(tmp, "220 Hello world!\n");
+        send_string(tmp, FTP_GREET_MESSAGE);
 }
 
 static void delete_session(struct session *sess)
@@ -120,7 +120,7 @@ static void read_data(struct session *ptr, struct tcp_server *serv)
         ptr->buf_used += rc;
         check_lf(ptr, serv);
         if (ptr->buf_used >= INBUFSIZE) {
-                send_string(ptr, "# String too long...\n\n");
+                send_string(ptr, FTP_ERROR_MESSAGE);
                 ptr->buf_used = 0;
         }
 }

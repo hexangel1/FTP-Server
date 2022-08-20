@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
-#include <sys/socket.h>
 #include "ftp.h"
 #include "tcp.h"
 #include "server.h"
@@ -67,8 +66,7 @@ static int child_proc_tx(const char *filename, struct session *ptr)
         }
         send_string(ptr, "125 Channel open, data exchange started\n");
         res = tcp_transmit(conn, fd);
-        shutdown(conn, 2);
-        close(conn);
+        tcp_shutdown(conn);
         close(fd);
         if (res == -1) {
                 send_string(ptr, "500 File transmission failed.\n");
@@ -97,8 +95,7 @@ static int child_proc_rx(const char *filename, struct session *ptr)
         }
         send_string(ptr, "125 Channel open, data exchange started\n");
         res = tcp_receive(conn, fd);
-        shutdown(conn, 2);
-        close(conn);
+        tcp_shutdown(conn);
         close(fd);
         if (res == -1) {
                 send_string(ptr, "451 File transmission failed.\n");
@@ -147,10 +144,8 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
         }
         host = get_host_ip(ptr->socket_d);
         port = MIN_PORT_NUM + (rand() % (MAX_PORT_NUM - MIN_PORT_NUM + 1));
-        if (ptr->sock_pasv != -1) {
-                shutdown(ptr->sock_pasv, 2);
-                close(ptr->sock_pasv);
-        }
+        if (ptr->sock_pasv != -1)
+                tcp_shutdown(ptr->sock_pasv);
         ptr->sock_pasv = tcp_create_socket(host, port);
         sscanf(host ,"%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3]);
         sprintf(buff, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
