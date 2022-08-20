@@ -287,9 +287,9 @@ int create_socket(const char *ipaddr, unsigned short port)
 
 const char *get_host_ip(int sock)
 {
-        struct sockaddr_in addr; 
+        struct sockaddr_in addr;
         socklen_t addr_size = sizeof(struct sockaddr_in);
-        getsockname(sock, (struct sockaddr *)&addr, &addr_size); 
+        getsockname(sock, (struct sockaddr *)&addr, &addr_size);
         return get_ip_address(&addr);
 }
 

@@ -50,10 +50,93 @@ static void parse_command(struct ftp_request *ftp_req, const char *cmdstring)
         ftp_req->cmd_idx = search_command(ftp_req->cmd);
 }
 
+#ifdef LINUX
+static int ftp_transmit(int conn, int fd)
+{
+        struct stat st_buf;
+        ssize_t wc;
+        int res;
+        res = fstat(fd, &st_buf);
+        if (res == -1) {
+                perror("fstat");
+                return -1;
+        }
+        wc = sendfile(conn, fd, NULL, st_buf.st_size);
+        if (wc != st_buf.st_size) {
+                perror("sendfile");
+                return -1;
+        }
+        return 0;
+}
+#else
+static int ftp_transmit(int conn, int fd)
+{
+        ssize_t rc, wc;
+        char buf[1024];
+        while ((rc = read(fd, buf, sizeof(buf))) > 0) {
+                wc = write(conn, buf, rc);
+                if (wc != rc) {
+                        perror("write");
+                        return -1;
+                }
+        }
+        if (rc != 0) {
+                perror("read");
+                return -1;
+        }
+        return 0;
+}
+#endif
+
+#ifdef LINUX
+static int ftp_receive(int conn, int fd)
+{
+        ssize_t rc;
+        int chan_fd[2];
+        int res, buff_size;
+        buff_size = getpagesize();
+        res = pipe(chan_fd);
+        if (res == -1) {
+                perror("pipe");
+                return -1;
+        }
+        while ((rc = splice(conn, NULL, chan_fd[1], NULL, buff_size,
+                      SPLICE_F_MORE | SPLICE_F_MOVE)) > 0) {
+                splice(chan_fd[0], NULL, fd, NULL, buff_size,
+                       SPLICE_F_MORE | SPLICE_F_MOVE);
+        }
+        close(chan_fd[0]);
+        close(chan_fd[1]);
+        if (rc != 0) {
+                perror("splice");
+                return -1;
+        }
+        return 0;
+
+}
+#else
+static int ftp_receive(int conn, int fd)
+{
+        ssize_t rc, wc;
+        char buf[1024];
+        while ((rc = read(conn, buf, sizeof(buf))) > 0) {
+                wc = write(fd, buf, rc);
+                if (wc != rc) {
+                        perror("write");
+                        return -1;
+                }
+        }
+        if (rc != 0) {
+                perror("read");
+                return -1;
+        }
+        return 0;
+}
+#endif
+
 static int child_proc_tx(const char *filename, struct session *ptr)
 {
-        int conn, fd;
-        struct stat stat_buf;
+        int conn, fd, res;
         if (ptr->mode == st_server)
                 conn = accept_conn(ptr->sock_pasv);
         else
@@ -68,20 +151,22 @@ static int child_proc_tx(const char *filename, struct session *ptr)
                 send_string(ptr, "550 Failed to get file\n");
                 return 1;
         }
-        fstat(fd, &stat_buf);
         send_string(ptr, "125 Channel open, data exchange started\n");
-        sendfile(conn, fd, NULL, stat_buf.st_size);
+        res = ftp_transmit(conn, fd);
         shutdown(conn, 2);
         close(conn);
         close(fd);
-        send_string(ptr, "226 File send OK.\n"); 
+        if (res == -1) {
+                send_string(ptr, "500 File transmission failed.\n");
+                return 1;
+        }
+        send_string(ptr, "226 File send OK.\n");
         return 0;
 }
 
 static int child_proc_rx(const char *filename, struct session *ptr)
 {
-        int res, conn, fd, fds[2];
-        size_t buff_size = getpagesize();
+        int conn, fd, res;
         if (ptr->mode == st_server)
                 conn = accept_conn(ptr->sock_pasv);
         else
@@ -89,29 +174,22 @@ static int child_proc_rx(const char *filename, struct session *ptr)
         if (conn == -1) {
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
-        }        
+        }
         fd = open(filename, O_WRONLY | O_CREAT, 0644);
         if (fd == -1) {
                 perror("open");
-                send_string(ptr, "550 No such file or directory.\n");
-                return 1;
-        }
-        res = pipe(fds);
-        if (res == -1) {
-                perror("pipe");
+                send_string(ptr, "553 No such file or directory.\n");
                 return 1;
         }
         send_string(ptr, "125 Channel open, data exchange started\n");
-        while (splice(conn, NULL, fds[1], NULL, buff_size,
-                      SPLICE_F_MORE | SPLICE_F_MOVE) > 0) {
-                splice(fds[0], NULL, fd, NULL, buff_size,
-                       SPLICE_F_MORE | SPLICE_F_MOVE);
-        }
+        res = ftp_receive(conn, fd);
         shutdown(conn, 2);
         close(conn);
-        close(fds[1]);
-        close(fds[0]);
         close(fd);
+        if (res == -1) {
+                send_string(ptr, "451 File transmission failed.\n");
+                return 1;
+        }
         send_string(ptr, "226 File send OK.\n");
         return 0;
 }
@@ -153,14 +231,14 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "530 Please login with USER and PASS.\n");
                 return;
         }
-        host = get_host_ip(ptr->socket_d); 
+        host = get_host_ip(ptr->socket_d);
         port = MIN_PORT_NUM + (rand() % (MAX_PORT_NUM - MIN_PORT_NUM + 1));
         if (ptr->sock_pasv != -1) {
                 shutdown(ptr->sock_pasv, 2);
                 close(ptr->sock_pasv);
         }
-        ptr->sock_pasv = create_socket(host, port); 
-        sscanf(host ,"%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3]); 
+        ptr->sock_pasv = create_socket(host, port);
+        sscanf(host ,"%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3]);
         sprintf(buff, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
                 ip[0], ip[1], ip[2], ip[3], port >> 8, port & 0x00FF);
         send_string(ptr, buff);
@@ -232,7 +310,7 @@ static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
         pid = fork();
         if (pid == -1) {
                 perror("fork");
-                send_string(ptr, "500 Internal Server Error\n");
+                send_string(ptr, "451 Internal Server Error\n");
                 return;
         }
         if (pid == 0) {
@@ -249,7 +327,7 @@ static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
 
 static void ftp_syst(struct ftp_request *ftp_req, struct session *ptr)
 {
-        send_string(ptr, "200 *nix\n");
+        send_string(ptr, "200 UNIX\n");
 }
 
 static void ftp_type(struct ftp_request *ftp_req, struct session *ptr)
