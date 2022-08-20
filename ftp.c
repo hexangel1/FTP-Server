@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include "ftp.h"
 #include "tcp.h"
@@ -217,6 +218,24 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
         ptr->txrx_pid = pid;
 }
 
+static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
+{
+        struct stat st_buf;
+        char filesize[128];
+        int res;
+        if (!ptr->logged_in) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        res = stat(ftp_req->arg, &st_buf);
+        if (res == -1) {
+                send_string(ptr, "550 Could not get file size.\n");
+                return;
+        }
+        snprintf(filesize, sizeof(filesize), "213 %ld\n", st_buf.st_size);
+        send_string(ptr, filesize);
+}
+
 static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
 {
         int pid, status;
@@ -293,7 +312,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
                 ftp_fail, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_fail,
                 ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
-                ftp_fail, ftp_fail, ftp_stor, ftp_syst, ftp_type,
+                ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
                 ftp_user
         };
         struct ftp_request ftp_req;
