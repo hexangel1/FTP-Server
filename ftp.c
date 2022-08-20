@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include "ftp.h"
 #include "tcp.h"
+#include "server.h"
 
 static const char *const cmd_table[] = {
         "ABOR", "CDUP", "CWD",  "DELE", "EPSV",
@@ -51,9 +52,9 @@ static int child_proc_tx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
         if (ptr->mode == st_server)
-                conn = accept_conn(ptr->sock_pasv);
+                conn = tcp_accept(ptr->sock_pasv);
         else
-                conn = create_conn(ptr->tr_ip, ptr->tr_port);
+                conn = tcp_connect(ptr->tr_ip, ptr->tr_port);
         if (conn == -1) {
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
@@ -81,9 +82,9 @@ static int child_proc_rx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
         if (ptr->mode == st_server)
-                conn = accept_conn(ptr->sock_pasv);
+                conn = tcp_accept(ptr->sock_pasv);
         else
-                conn = create_conn(ptr->tr_ip, ptr->tr_port);
+                conn = tcp_connect(ptr->tr_ip, ptr->tr_port);
         if (conn == -1) {
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
@@ -150,7 +151,7 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
                 shutdown(ptr->sock_pasv, 2);
                 close(ptr->sock_pasv);
         }
-        ptr->sock_pasv = create_socket(host, port);
+        ptr->sock_pasv = tcp_create_socket(host, port);
         sscanf(host ,"%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3]);
         sprintf(buff, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
                 ip[0], ip[1], ip[2], ip[3], port >> 8, port & 0x00FF);
