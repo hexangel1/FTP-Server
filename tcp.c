@@ -13,21 +13,21 @@
 #include <errno.h>
 #include "tcp.h"
 
-unsigned short get_port_number(struct sockaddr_in *addr)
-{
-        return ntohs(addr->sin_port);
-}
-
-const char *get_ip_address(struct sockaddr_in *addr)
+static const char *get_ip_address(struct sockaddr_in *addr)
 {
         return inet_ntoa(addr->sin_addr);
 }
 
-const char *get_host_ip(int sock)
+static unsigned short get_port(struct sockaddr_in *addr)
+{
+        return ntohs(addr->sin_port);
+}
+
+const char *get_host_ip(int sockfd)
 {
         struct sockaddr_in addr;
-        socklen_t addr_size = sizeof(struct sockaddr_in);
-        getsockname(sock, (struct sockaddr *)&addr, &addr_size);
+        socklen_t addrlen = sizeof(struct sockaddr_in);
+        getsockname(sockfd, (struct sockaddr *)&addr, &addrlen);
         return get_ip_address(&addr);
 }
 
@@ -67,7 +67,7 @@ int tcp_connect(const char *ipaddr, unsigned short port)
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
-        if (!inet_aton(ipaddr, &(addr.sin_addr))) {
+        if (!inet_aton(ipaddr, &addr.sin_addr)) {
                 fprintf(stderr,"Invalid ip address\n");
                 return -1;
         }
@@ -76,7 +76,7 @@ int tcp_connect(const char *ipaddr, unsigned short port)
                 perror("socket");
                 return -1;
         }
-        res = connect(sockfd, (struct sockaddr*)&addr, sizeof(addr));
+        res = connect(sockfd, (struct sockaddr *)&addr, sizeof(addr));
         if (res == -1) {
                 perror("connect");
                 return -1;
@@ -84,13 +84,18 @@ int tcp_connect(const char *ipaddr, unsigned short port)
         return sockfd;
 }
 
-int tcp_accept(int ls)
+int tcp_accept(int ls, char *address, int len)
 {
         struct sockaddr_in addr;
         socklen_t addrlen = sizeof(struct sockaddr_in);
         int sockfd = accept(ls, (struct sockaddr *)&addr, &addrlen);
-        shutdown(ls, 2);
-        close(ls);
+        if (sockfd == -1) {
+                perror("accept");
+                return -1;
+        }
+        if (address)
+                snprintf(address, len, "%s:%u",
+                         get_ip_address(&addr), get_port(&addr));
         return sockfd;
 }
 
@@ -98,6 +103,16 @@ void tcp_shutdown(int sockfd)
 {
         shutdown(sockfd, 2);
         close(sockfd);
+}
+
+ssize_t tcp_recv(int sockfd, char *buf, size_t len)
+{
+        return recv(sockfd, buf, len, 0);
+}
+
+ssize_t tcp_send(int sockfd, const char *buf, size_t len)
+{
+        return send(sockfd, buf, len, 0);
 }
 
 #ifdef LINUX
@@ -122,9 +137,9 @@ int tcp_transmit(int conn, int fd)
 int tcp_transmit(int conn, int fd)
 {
         ssize_t rc, wc;
-        char buf[1024];
+        char buf[4096];
         while ((rc = read(fd, buf, sizeof(buf))) > 0) {
-                wc = write(conn, buf, rc);
+                wc = send(conn, buf, rc, 0);
                 if (wc != rc) {
                         perror("write");
                         return -1;
@@ -162,14 +177,13 @@ int tcp_receive(int conn, int fd)
                 return -1;
         }
         return 0;
-
 }
 #else
 int tcp_receive(int conn, int fd)
 {
         ssize_t rc, wc;
-        char buf[1024];
-        while ((rc = read(conn, buf, sizeof(buf))) > 0) {
+        char buf[4096];
+        while ((rc = recv(conn, buf, sizeof(buf), 0)) > 0) {
                 wc = write(fd, buf, rc);
                 if (wc != rc) {
                         perror("write");

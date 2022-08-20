@@ -8,6 +8,9 @@
 #include "tcp.h"
 #include "server.h"
 
+const char *const ftp_greet_message = "220 Welcome!\n";
+const char *const ftp_error_message = "500 Bad command\n";
+
 static const char *const cmd_table[] = {
         "ABOR", "CDUP", "CWD",  "DELE", "EPSV",
         "HELP", "LIST", "MDTM", "MKD",  "NLST",
@@ -50,10 +53,12 @@ static void parse_command(struct ftp_request *ftp_req, const char *cmdstring)
 static int child_proc_tx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
-        if (ptr->mode == st_server)
-                conn = tcp_accept(ptr->sock_pasv);
-        else
+        if (ptr->mode == st_server) {
+                conn = tcp_accept(ptr->sock_pasv, NULL, 0);
+                tcp_shutdown(ptr->sock_pasv);
+        } else {
                 conn = tcp_connect(ptr->tr_ip, ptr->tr_port);
+        }
         if (conn == -1) {
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
@@ -79,10 +84,12 @@ static int child_proc_tx(const char *filename, struct session *ptr)
 static int child_proc_rx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
-        if (ptr->mode == st_server)
-                conn = tcp_accept(ptr->sock_pasv);
-        else
+        if (ptr->mode == st_server) {
+                conn = tcp_accept(ptr->sock_pasv, NULL, 0);
+                tcp_shutdown(ptr->sock_pasv);
+        } else {
                 conn = tcp_connect(ptr->tr_ip, ptr->tr_port);
+        }
         if (conn == -1) {
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
@@ -224,7 +231,7 @@ static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
         if (ptr->txrx_pid > 0) {
                 send_string(ptr, "451 Wait transmission to finish\n");
                 return;
-        } 
+        }
         pid = fork();
         if (pid == -1) {
                 perror("fork");

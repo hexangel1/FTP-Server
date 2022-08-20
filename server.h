@@ -2,6 +2,7 @@
 #define SERVER_H_SENTRY
 
 #define INBUFSIZE 1024
+#define ADDRESS_LEN 32
 
 enum signal_event {
         sigev_no_events = 0,
@@ -21,6 +22,7 @@ struct session {
         int socket_d;
         int buf_used;
         char buf[INBUFSIZE];
+        char address[ADDRESS_LEN];
         char *username;
         int logged_in;
         int mode;

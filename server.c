@@ -6,12 +6,11 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/select.h>
-#include <netinet/in.h>
 #include <errno.h>
 #include <time.h>
 #include "server.h"
-#include "tcp.h"
 #include "ftp.h"
+#include "tcp.h"
 
 static volatile sig_atomic_t sig_event_flag = sigev_no_events;
 
@@ -25,11 +24,12 @@ static void signal_handler(int signum)
                 sig_event_flag = sigev_childexit;
 }
 
-static void create_session(struct session **sess, int fd)
+static void create_session(struct session **sess, int fd, const char *addr)
 {
         struct session *tmp = malloc(sizeof(*tmp));
         tmp->socket_d = fd;
         tmp->buf_used = 0;
+        strncpy(tmp->address, addr, sizeof(tmp->address));
         tmp->username = 0;
         tmp->logged_in = 0;
         tmp->mode = 0;
@@ -38,7 +38,7 @@ static void create_session(struct session **sess, int fd)
         tmp->flag = st_normal;
         tmp->next = *sess;
         *sess = tmp;
-        send_string(tmp, FTP_GREET_MESSAGE);
+        send_string(tmp, ftp_greet_message);
 }
 
 static void delete_session(struct session *sess)
@@ -127,7 +127,7 @@ static void check_lf(struct session *ptr, struct tcp_server *serv)
 static void read_data(struct session *ptr, struct tcp_server *serv)
 {
         int rc, busy = ptr->buf_used;
-        rc = read(ptr->socket_d, ptr->buf + busy, INBUFSIZE - busy);
+        rc = tcp_recv(ptr->socket_d, ptr->buf + busy, INBUFSIZE - busy);
         if (rc <= 0) {
                 ptr->flag = st_goodbye;
                 return;
@@ -135,7 +135,7 @@ static void read_data(struct session *ptr, struct tcp_server *serv)
         ptr->buf_used += rc;
         check_lf(ptr, serv);
         if (ptr->buf_used >= INBUFSIZE) {
-                send_string(ptr, FTP_ERROR_MESSAGE);
+                send_string(ptr, ftp_error_message);
                 ptr->buf_used = 0;
         }
 }
@@ -185,17 +185,12 @@ static int handle_signal_event(struct tcp_server *serv)
 
 static void accept_connection(struct tcp_server *serv)
 {
-        struct sockaddr_in addr;
-        socklen_t addrlen = sizeof(struct sockaddr_in);
         int sockfd;
-        sockfd = accept(serv->listen_sock, (struct sockaddr *)&addr, &addrlen);
-        if (sockfd == -1) {
-                if (errno != EINTR)
-                        perror("accept");
-        } else {
-                fprintf(stderr, "connection from %s:%u\n",
-                        get_ip_address(&addr), get_port_number(&addr));
-                create_session(&serv->sess, sockfd);
+        char address[ADDRESS_LEN];
+        sockfd = tcp_accept(serv->listen_sock, address, sizeof(address));
+        if (sockfd != -1) {
+                fprintf(stderr, "connection from %s\n", address);
+                create_session(&serv->sess, sockfd, address);
         }
 }
 
@@ -265,6 +260,6 @@ void tcp_server_down(struct tcp_server *serv)
 
 void send_string(struct session *ptr, const char *str)
 {
-        write(ptr->socket_d, str, strlen(str));
+        tcp_send(ptr->socket_d, str, strlen(str));
 }
 
