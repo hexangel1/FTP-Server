@@ -4,10 +4,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/sendfile.h>
 #include "ftp.h"
 #include "tcp.h"
 
@@ -50,90 +47,6 @@ static void parse_command(struct ftp_request *ftp_req, const char *cmdstring)
         ftp_req->cmd_idx = search_command(ftp_req->cmd);
 }
 
-#ifdef LINUX
-static int ftp_transmit(int conn, int fd)
-{
-        struct stat st_buf;
-        ssize_t wc;
-        int res;
-        res = fstat(fd, &st_buf);
-        if (res == -1) {
-                perror("fstat");
-                return -1;
-        }
-        wc = sendfile(conn, fd, NULL, st_buf.st_size);
-        if (wc != st_buf.st_size) {
-                perror("sendfile");
-                return -1;
-        }
-        return 0;
-}
-#else
-static int ftp_transmit(int conn, int fd)
-{
-        ssize_t rc, wc;
-        char buf[1024];
-        while ((rc = read(fd, buf, sizeof(buf))) > 0) {
-                wc = write(conn, buf, rc);
-                if (wc != rc) {
-                        perror("write");
-                        return -1;
-                }
-        }
-        if (rc != 0) {
-                perror("read");
-                return -1;
-        }
-        return 0;
-}
-#endif
-
-#ifdef LINUX
-static int ftp_receive(int conn, int fd)
-{
-        ssize_t rc;
-        int chan_fd[2];
-        int res, buff_size;
-        buff_size = getpagesize();
-        res = pipe(chan_fd);
-        if (res == -1) {
-                perror("pipe");
-                return -1;
-        }
-        while ((rc = splice(conn, NULL, chan_fd[1], NULL, buff_size,
-                      SPLICE_F_MORE | SPLICE_F_MOVE)) > 0) {
-                splice(chan_fd[0], NULL, fd, NULL, buff_size,
-                       SPLICE_F_MORE | SPLICE_F_MOVE);
-        }
-        close(chan_fd[0]);
-        close(chan_fd[1]);
-        if (rc != 0) {
-                perror("splice");
-                return -1;
-        }
-        return 0;
-
-}
-#else
-static int ftp_receive(int conn, int fd)
-{
-        ssize_t rc, wc;
-        char buf[1024];
-        while ((rc = read(conn, buf, sizeof(buf))) > 0) {
-                wc = write(fd, buf, rc);
-                if (wc != rc) {
-                        perror("write");
-                        return -1;
-                }
-        }
-        if (rc != 0) {
-                perror("read");
-                return -1;
-        }
-        return 0;
-}
-#endif
-
 static int child_proc_tx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
@@ -152,7 +65,7 @@ static int child_proc_tx(const char *filename, struct session *ptr)
                 return 1;
         }
         send_string(ptr, "125 Channel open, data exchange started\n");
-        res = ftp_transmit(conn, fd);
+        res = tcp_transmit(conn, fd);
         shutdown(conn, 2);
         close(conn);
         close(fd);
@@ -182,7 +95,7 @@ static int child_proc_rx(const char *filename, struct session *ptr)
                 return 1;
         }
         send_string(ptr, "125 Channel open, data exchange started\n");
-        res = ftp_receive(conn, fd);
+        res = tcp_receive(conn, fd);
         shutdown(conn, 2);
         close(conn);
         close(fd);

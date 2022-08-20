@@ -5,11 +5,14 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/sendfile.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <time.h>
 #include "tcp.h"
@@ -34,19 +37,18 @@ static void clean_zombies(int signum)
 
 static void create_session(struct session **sess, int fd)
 {
-        while (*sess)
-                sess = &(*sess)->next;
-        *sess = malloc(sizeof(**sess));
-        (*sess)->next = NULL;
-        (*sess)->socket_d = fd;
-        (*sess)->buf_used = 0;
-        (*sess)->username = 0;
-        (*sess)->logged_in = 0;
-        (*sess)->mode = 0;
-        (*sess)->sock_pasv = -1;
-        (*sess)->tr_pid = -1;
-        (*sess)->flag = st_normal;
-        send_string(*sess, "220 Hello world!\n");
+        struct session *tmp = malloc(sizeof(*tmp));
+        tmp->socket_d = fd;
+        tmp->buf_used = 0;
+        tmp->username = 0;
+        tmp->logged_in = 0;
+        tmp->mode = 0;
+        tmp->sock_pasv = -1;
+        tmp->tr_pid = -1;
+        tmp->flag = st_normal;
+        tmp->next = *sess;
+        *sess = tmp;
+        send_string(tmp, "220 Hello world!\n");
 }
 
 static void delete_session(struct session *sess)
@@ -234,6 +236,7 @@ struct tcp_server *new_tcp_server(const char *ip, unsigned short port)
 
 int tcp_server_up(struct tcp_server *serv)
 {
+        srand(time(NULL));
         serv->listen_sock = create_socket(serv->ipaddr, serv->port);
         if (serv->listen_sock == -1)
                 return -1;
@@ -325,4 +328,88 @@ int create_conn(const char *ipaddr, unsigned short port)
         }
         return sockfd;
 }
+
+#ifdef LINUX
+int tcp_transmit(int conn, int fd)
+{
+        struct stat st_buf;
+        ssize_t wc;
+        int res;
+        res = fstat(fd, &st_buf);
+        if (res == -1) {
+                perror("fstat");
+                return -1;
+        }
+        wc = sendfile(conn, fd, NULL, st_buf.st_size);
+        if (wc != st_buf.st_size) {
+                perror("sendfile");
+                return -1;
+        }
+        return 0;
+}
+#else
+int tcp_transmit(int conn, int fd)
+{
+        ssize_t rc, wc;
+        char buf[1024];
+        while ((rc = read(fd, buf, sizeof(buf))) > 0) {
+                wc = write(conn, buf, rc);
+                if (wc != rc) {
+                        perror("write");
+                        return -1;
+                }
+        }
+        if (rc != 0) {
+                perror("read");
+                return -1;
+        }
+        return 0;
+}
+#endif
+
+#ifdef LINUX
+int tcp_receive(int conn, int fd)
+{
+        ssize_t rc;
+        int chan_fd[2];
+        int res, buff_size;
+        buff_size = getpagesize();
+        res = pipe(chan_fd);
+        if (res == -1) {
+                perror("pipe");
+                return -1;
+        }
+        while ((rc = splice(conn, NULL, chan_fd[1], NULL, buff_size,
+                      SPLICE_F_MORE | SPLICE_F_MOVE)) > 0) {
+                splice(chan_fd[0], NULL, fd, NULL, buff_size,
+                       SPLICE_F_MORE | SPLICE_F_MOVE);
+        }
+        close(chan_fd[0]);
+        close(chan_fd[1]);
+        if (rc != 0) {
+                perror("splice");
+                return -1;
+        }
+        return 0;
+
+}
+#else
+int tcp_receive(int conn, int fd)
+{
+        ssize_t rc, wc;
+        char buf[1024];
+        while ((rc = read(conn, buf, sizeof(buf))) > 0) {
+                wc = write(fd, buf, rc);
+                if (wc != rc) {
+                        perror("write");
+                        return -1;
+                }
+        }
+        if (rc != 0) {
+                perror("read");
+                return -1;
+        }
+        return 0;
+}
+#endif
 
