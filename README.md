@@ -2,11 +2,11 @@
 
 ## Поддерживамые команды
 
-* ABOR, CDUP, CWD,  LIST
-* NLST, NOOP, PASS, PASV
-* PORT, PWD,  QUIT, RETR
-* SIZE, STOR, SYST, TYPE
-* USER
+* ABOR, CDUP, CWD,  DELE
+* LIST, MKD,  NLST, NOOP
+* PASS, PASV, PORT, PWD
+* QUIT, RETR, RMD,  SIZE
+* STOR, SYST, TYPE, USER
 
 ## Установка и запуск
 

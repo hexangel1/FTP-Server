@@ -181,6 +181,22 @@ static void ftp_cwd(struct ftp_request *ftp_req, struct session *ptr)
         send_string(ptr, "250 Directory successfully changed.\n");
 }
 
+static void ftp_dele(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int res;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        res = unlinkat(ptr->curr_dir, ftp_req->arg, 0);
+        if (res == -1) {
+                perror("unlinkat");
+                send_string(ptr, "550 Failed to remove file.\n");
+        } else {
+                send_string(ptr, "257 File removed\n");
+        }
+}
+
 static void ftp_help(struct ftp_request *ftp_req, struct session *ptr)
 {
         char buf[256] = "220 ";
@@ -243,6 +259,22 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
         }
         ptr->txrx_pid = pid;
         transfer_mode_reset(ptr);
+}
+
+static void ftp_mkd(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int res;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        res = mkdirat(ptr->curr_dir, ftp_req->arg, 0755);
+        if (res == -1) {
+                perror("mkdirat");
+                send_string(ptr, "550 Failed to create directory.\n");
+        } else {
+                send_string(ptr, "257 New directory created\n");
+        }
 }
 
 static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
@@ -407,6 +439,22 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
         transfer_mode_reset(ptr);
 }
 
+static void ftp_rmd(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int res;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        res = unlinkat(ptr->curr_dir, ftp_req->arg, AT_REMOVEDIR);
+        if (res == -1) {
+                perror("unlinkat");
+                send_string(ptr, "550 Failed to remove directory.\n");
+        } else {
+                send_string(ptr, "250 Directory removed\n");
+        }
+}
+
 static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
 {
         struct stat st_buf;
@@ -494,10 +542,10 @@ static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
 void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
-                ftp_abor, ftp_cdup, ftp_cwd,  ftp_fail, ftp_fail,
-                ftp_help, ftp_list, ftp_fail, ftp_fail, ftp_nlst,
+                ftp_abor, ftp_cdup, ftp_cwd,  ftp_dele, ftp_fail,
+                ftp_help, ftp_list, ftp_fail, ftp_mkd,  ftp_nlst,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_pwd,
-                ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
+                ftp_quit, ftp_fail, ftp_retr, ftp_rmd,  ftp_fail,
                 ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
                 ftp_user
         };
