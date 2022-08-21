@@ -2,18 +2,10 @@
 
 ## Поддерживамые команды
 
-* ABOR
-* NOOP
-* PASS
-* PASV
-* PORT
-* QUIT
-* RETR
-* SIZE
-* STOR
-* SYST
-* TYPE
-* USER
+* ABOR, LIST, NLST, NOOP
+* PASS, PASV, PORT, QUIT
+* RETR, SIZE, STOR, SYST
+* TYPE, USER
 
 ## Установка и запуск
 

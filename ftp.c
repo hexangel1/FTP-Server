@@ -4,9 +4,13 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <fcntl.h>
+#include <time.h>
 #include "ftp.h"
 #include "tcp.h"
+#include "fs.h"
 #include "server.h"
 
 const char *const ftp_greet_message = "220 Welcome!\n";
@@ -47,19 +51,28 @@ static int check_username(const char *username)
 
 static void parse_command(struct ftp_request *ftp_req, const char *cmdstring)
 {
+        ftp_req->cmd[0] = 0;
+        ftp_req->arg[0] = 0;
         sscanf(cmdstring, "%7s %s", ftp_req->cmd, ftp_req->arg);
         ftp_req->cmd_idx = search_command(ftp_req->cmd);
+}
+
+static int make_connection(struct session *ptr)
+{
+        int conn = -1;
+        if (ptr->state == st_passive) {
+                conn = tcp_accept(ptr->sock_pasv, NULL, 0);
+                tcp_shutdown(ptr->sock_pasv);
+        } else if (ptr->state == st_active) {
+                conn = tcp_connect(ptr->ip_actv, ptr->port_actv);
+        }
+        return conn;
 }
 
 static int child_proc_tx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
-        if (ptr->state == st_passive) {
-                conn = tcp_accept(ptr->sock_pasv, NULL, 0);
-                tcp_shutdown(ptr->sock_pasv);
-        } else {
-                conn = tcp_connect(ptr->ip_actv, ptr->port_actv);
-        }
+        conn = make_connection(ptr);
         if (conn == -1) {
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
@@ -67,6 +80,7 @@ static int child_proc_tx(const char *filename, struct session *ptr)
         fd = open(filename, O_RDONLY);
         if (fd == -1) {
                 perror("open");
+                tcp_shutdown(conn);
                 send_string(ptr, "550 Failed to get file\n");
                 return 1;
         }
@@ -85,12 +99,7 @@ static int child_proc_tx(const char *filename, struct session *ptr)
 static int child_proc_rx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
-        if (ptr->state == st_passive) {
-                conn = tcp_accept(ptr->sock_pasv, NULL, 0);
-                tcp_shutdown(ptr->sock_pasv);
-        } else {
-                conn = tcp_connect(ptr->ip_actv, ptr->port_actv);
-        }
+        conn = make_connection(ptr);
         if (conn == -1) {
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
@@ -98,6 +107,7 @@ static int child_proc_rx(const char *filename, struct session *ptr)
         fd = open(filename, O_WRONLY | O_CREAT, 0644);
         if (fd == -1) {
                 perror("open");
+                tcp_shutdown(conn);
                 send_string(ptr, "553 No such file or directory.\n");
                 return 1;
         }
@@ -124,6 +134,104 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
                 ptr->txrx_pid = 0;
                 send_string(ptr, "226 Closing data connection.\n");
         }
+}
+
+static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int conn, pid;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        pid = fork();
+        if (pid == -1) {
+                perror("fork");
+                send_string(ptr, "451 Internal Server Error\n");
+                return;
+        }
+        if (pid == 0) {
+                char buf[256];
+                int res, dir_fd;
+                struct stat st_buf;
+                struct dirent *entry;
+                DIR *dp;
+                conn = make_connection(ptr);
+                if (conn == -1) {
+                        send_string(ptr, "451 Internal Server Error\n");
+                        exit(1);
+                }
+                dp = opendir(ftp_req->arg[0] ? ftp_req->arg : ".");
+                if (!dp) {
+                        send_string(ptr, "550 Failed to open directory.\n");
+                        exit(1);
+                }
+                dir_fd = dirfd(dp);
+                send_string(ptr, "150 Here comes the directory listing.\n");
+                while ((entry = readdir(dp))) {
+                        res = fstatat(dir_fd, entry->d_name, &st_buf, 0);
+                        if (res == -1) {
+                                perror("fstatat");
+                                continue;
+                        }
+                        str_file_info(buf, sizeof(buf), &st_buf, entry->d_name);
+                        tcp_send(conn, buf, strlen(buf));
+                }
+                tcp_shutdown(conn);
+                closedir(dp);
+                send_string(ptr, "226 Directory send OK.\n");
+                exit(0);
+        }
+        if (ptr->state == st_passive) {
+                close(ptr->sock_pasv);
+                ptr->sock_pasv = -1;
+        }
+        ptr->state = st_normal;
+        ptr->txrx_pid = pid;
+}
+
+static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int conn, pid;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        pid = fork();
+        if (pid == -1) {
+                perror("fork");
+                send_string(ptr, "451 Internal Server Error\n");
+                return;
+        }
+        if (pid == 0) {
+                struct dirent *entry;
+                DIR *dp;
+                conn = make_connection(ptr);
+                if (conn == -1) {
+                        send_string(ptr, "451 Internal Server Error\n");
+                        exit(1);
+                }
+                dp = opendir(ftp_req->arg[0] ? ftp_req->arg : ".");
+                if (!dp) {
+                        send_string(ptr, "550 Failed to open directory.\n");
+                        tcp_shutdown(conn);
+                        exit(1);
+                }
+                send_string(ptr, "150 Here comes the directory listing.\n");
+                while ((entry = readdir(dp))) {
+                        tcp_send(conn, entry->d_name, strlen(entry->d_name));
+                        tcp_send(conn, "\r\n", 2);
+                }
+                tcp_shutdown(conn);
+                closedir(dp);
+                send_string(ptr, "226 Directory send OK.\n");
+                exit(0);
+        }
+        if (ptr->state == st_passive) {
+                close(ptr->sock_pasv);
+                ptr->sock_pasv = -1;
+        }
+        ptr->state = st_normal;
+        ptr->txrx_pid = pid;
 }
 
 static void ftp_noop(struct ftp_request *ftp_req, struct session *ptr)
@@ -310,7 +418,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
                 ftp_abor, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
-                ftp_fail, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
+                ftp_fail, ftp_list, ftp_fail, ftp_fail, ftp_nlst,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_fail,
                 ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
                 ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
