@@ -86,7 +86,7 @@ static int child_proc_tx(const char *filename, struct session *ptr)
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
         }
-        fd = open(filename, O_RDONLY);
+        fd = openat(ptr->curr_dir, filename, O_RDONLY);
         if (fd == -1) {
                 perror("open");
                 tcp_shutdown(conn);
@@ -113,7 +113,7 @@ static int child_proc_rx(const char *filename, struct session *ptr)
                 send_string(ptr, "451 Internal Server Error\n");
                 return 1;
         }
-        fd = open(filename, O_WRONLY | O_CREAT, 0644);
+        fd = openat(ptr->curr_dir, filename, O_WRONLY | O_CREAT, 0644);
         if (fd == -1) {
                 perror("open");
                 tcp_shutdown(conn);
@@ -143,6 +143,42 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
                 ptr->txrx_pid = 0;
                 send_string(ptr, "226 Closing data connection.\n");
         }
+}
+
+static void ftp_cdup(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int dir_fd;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        dir_fd = openat(ptr->curr_dir, "..", O_RDONLY | O_DIRECTORY);
+        if (dir_fd == -1) {
+                perror("openat");
+                send_string(ptr, "550 Failed to change directory.\n");
+                return;
+        }
+        close(ptr->curr_dir);
+        ptr->curr_dir = dir_fd;
+        send_string(ptr, "250 Directory successfully changed.\n");
+}
+
+static void ftp_cwd(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int dir_fd;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        dir_fd = openat(ptr->curr_dir, ftp_req->arg, O_RDONLY | O_DIRECTORY);
+        if (dir_fd == -1) {
+                perror("openat");
+                send_string(ptr, "550 Failed to change directory.\n");
+                return;
+        }
+        close(ptr->curr_dir);
+        ptr->curr_dir = dir_fd;
+        send_string(ptr, "250 Directory successfully changed.\n");
 }
 
 static void ftp_help(struct ftp_request *ftp_req, struct session *ptr)
@@ -178,6 +214,7 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
                 struct stat st_buf;
                 struct dirent *entry;
                 DIR *dp;
+                fchdir(ptr->curr_dir);
                 conn = make_connection(ptr);
                 if (conn == -1) {
                         send_string(ptr, "451 Internal Server Error\n");
@@ -224,6 +261,7 @@ static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
         if (pid == 0) {
                 struct dirent *entry;
                 DIR *dp;
+                fchdir(ptr->curr_dir);
                 conn = make_connection(ptr);
                 if (conn == -1) {
                         send_string(ptr, "451 Internal Server Error\n");
@@ -300,6 +338,38 @@ static void ftp_port(struct ftp_request *ftp_req, struct session *ptr)
         ptr->port_actv = (port[0] << 8) + port[1];
         fprintf(stderr, "%s:%d\n", ptr->ip_actv, ptr->port_actv);
         ptr->state = st_active;
+}
+
+static void ftp_pwd(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int dir_fd, res;
+        char buf[256], *path;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Please login with USER and PASS.\n");
+                return;
+        }
+        dir_fd = open(".", O_RDONLY | O_DIRECTORY);
+        if (dir_fd == -1) {
+                perror("open");
+                send_string(ptr, "550 Failed to get pwd.\n");
+                return;
+        }
+        res = fchdir(ptr->curr_dir);
+        if (res == -1) {
+                perror("fchdir");
+                send_string(ptr, "550 Failed to get pwd.\n");
+                return;
+        }
+        path = getcwd(NULL, 240);
+        fchdir(dir_fd);
+        close(dir_fd);
+        if (path) {
+                sprintf(buf, "220 %s\n", path);
+                free(path);
+                send_string(ptr, buf);
+        } else {
+                send_string(ptr, "550 Failed to get pwd.\n");
+        }
 }
 
 static void ftp_quit(struct ftp_request *ftp_req, struct session *ptr)
@@ -424,9 +494,9 @@ static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
 void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
-                ftp_abor, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
+                ftp_abor, ftp_cdup, ftp_cwd,  ftp_fail, ftp_fail,
                 ftp_help, ftp_list, ftp_fail, ftp_fail, ftp_nlst,
-                ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_fail,
+                ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_pwd,
                 ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
                 ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
                 ftp_user

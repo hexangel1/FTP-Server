@@ -26,6 +26,7 @@ struct session {
         char buf[INBUFSIZE];
         char address[ADDRESS_LEN];
         char *username;
+        int curr_dir;
         int sock_pasv;
         int port_actv;
         char ip_actv[32];

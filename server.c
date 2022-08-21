@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/select.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <time.h>
 #include "server.h"
@@ -53,6 +54,7 @@ static void create_session(struct session **sess, int fd, const char *addr)
         tmp->buf_used = 0;
         strncpy(tmp->address, addr, sizeof(tmp->address));
         tmp->username = 0;
+        tmp->curr_dir = open(".", O_RDONLY | O_DIRECTORY);
         tmp->sock_pasv = -1;
         tmp->port_actv = 0;
         memset(tmp->ip_actv, 0, sizeof(tmp->ip_actv));
@@ -65,6 +67,7 @@ static void create_session(struct session **sess, int fd, const char *addr)
 
 static void delete_session(struct session *sess)
 {
+        close(sess->curr_dir);
         tcp_shutdown(sess->socket_d);
         if (sess->sock_pasv != -1)
                 tcp_shutdown(sess->sock_pasv);
