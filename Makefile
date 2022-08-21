@@ -4,7 +4,7 @@ HEADERS = $(filter-out main.h, $(SOURCES:.c=.h))
 OBJECTS = $(SOURCES:.c=.o)
 SPECIAL = Makefile README.md LICENSE
 CC = gcc
-CFLAGS = -Wall -g -ansi -pedantic -D _GNU_SOURCE #-D LINUX
+CFLAGS = -Wall -g -ansi -pedantic -D _GNU_SOURCE -D LINUX
 LDLIBS =
 CTAGS = ctags
 ARGV = 127.0.0.1 2000
