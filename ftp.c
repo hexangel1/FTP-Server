@@ -136,6 +136,20 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
+static void ftp_help(struct ftp_request *ftp_req, struct session *ptr)
+{
+        char buf[256] = "220 ";
+        int used = strlen(buf);
+        int i, cmd_table_size = sizeof(cmd_table) / sizeof(*cmd_table);
+        for (i = 0; i < cmd_table_size; i++) {
+                strcpy(buf + used, cmd_table[i]);
+                used += strlen(cmd_table[i]);
+                buf[used] = i == cmd_table_size - 1 ? '\n' : ' ';
+                used++;
+        }
+        send_string(ptr, buf);
+}
+
 static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
 {
         int conn, pid;
@@ -418,7 +432,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
                 ftp_abor, ftp_fail, ftp_fail, ftp_fail, ftp_fail,
-                ftp_fail, ftp_list, ftp_fail, ftp_fail, ftp_nlst,
+                ftp_help, ftp_list, ftp_fail, ftp_fail, ftp_nlst,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_fail,
                 ftp_quit, ftp_fail, ftp_retr, ftp_fail, ftp_fail,
                 ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
