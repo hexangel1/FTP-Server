@@ -48,12 +48,12 @@ static void get_modify_time(char *buf, int len, time_t rawtime)
         struct tm *tmptr = localtime(&rawtime);
         strftime(buf, len, "%b %d %H:%M", tmptr);
 }
- 
+
 void str_file_info(char *buf, int len, struct stat *st_buf, const char *name)
 {
         char perms[10], mtimebuf[80], usrgrpbuf[80];
         get_permissions(perms, st_buf->st_mode & ALLPERMS);
-        get_user_group(usrgrpbuf, sizeof(usrgrpbuf), 
+        get_user_group(usrgrpbuf, sizeof(usrgrpbuf),
                        st_buf->st_uid, st_buf->st_gid);
         get_modify_time(mtimebuf, sizeof(mtimebuf), st_buf->st_mtime);
         snprintf(buf, len, "%c%s %4ld %s %8ld %s %s\r\n",

@@ -69,6 +69,15 @@ static int make_connection(struct session *ptr)
         return conn;
 }
 
+static void transfer_mode_reset(struct session *ptr)
+{
+        if (ptr->state == st_passive) {
+                close(ptr->sock_pasv);
+                ptr->sock_pasv = -1;
+        }
+        ptr->state = st_normal;
+}
+
 static int child_proc_tx(const char *filename, struct session *ptr)
 {
         int conn, fd, res;
@@ -195,12 +204,8 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "226 Directory send OK.\n");
                 exit(0);
         }
-        if (ptr->state == st_passive) {
-                close(ptr->sock_pasv);
-                ptr->sock_pasv = -1;
-        }
-        ptr->state = st_normal;
         ptr->txrx_pid = pid;
+        transfer_mode_reset(ptr);
 }
 
 static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
@@ -240,12 +245,8 @@ static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "226 Directory send OK.\n");
                 exit(0);
         }
-        if (ptr->state == st_passive) {
-                close(ptr->sock_pasv);
-                ptr->sock_pasv = -1;
-        }
-        ptr->state = st_normal;
         ptr->txrx_pid = pid;
+        transfer_mode_reset(ptr);
 }
 
 static void ftp_noop(struct ftp_request *ftp_req, struct session *ptr)
@@ -332,12 +333,8 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
                 status = child_proc_tx(ftp_req->arg, ptr);
                 exit(status);
         }
-        if (ptr->state == st_passive) {
-                close(ptr->sock_pasv);
-                ptr->sock_pasv = -1;
-        }
-        ptr->state = st_normal;
         ptr->txrx_pid = pid;
+        transfer_mode_reset(ptr);
 }
 
 static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
@@ -383,12 +380,8 @@ static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
                 status = child_proc_rx(ftp_req->arg, ptr);
                 exit(status);
         }
-        if (ptr->state == st_passive) {
-                close(ptr->sock_pasv);
-                ptr->sock_pasv = -1;
-        }
-        ptr->state = st_normal;
         ptr->txrx_pid = pid;
+        transfer_mode_reset(ptr);
 }
 
 static void ftp_syst(struct ftp_request *ftp_req, struct session *ptr)
