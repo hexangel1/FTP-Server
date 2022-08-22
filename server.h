@@ -2,6 +2,7 @@
 #define SERVER_H_SENTRY
 
 #define INBUFSIZE 1024
+#define OUTBUFSIZE 512
 #define ADDRESS_LEN 32
 
 enum signal_event {
@@ -24,6 +25,7 @@ struct session {
         int socket_d;
         int buf_used;
         char buf[INBUFSIZE];
+        char sendbuf[OUTBUFSIZE];
         char address[ADDRESS_LEN];
         char *username;
         int curr_dir;
@@ -47,6 +49,7 @@ int tcp_server_up(struct tcp_server *serv);
 void tcp_server_down(struct tcp_server *serv);
 struct tcp_server *new_tcp_server(const char *ip, unsigned short port);
 void send_string(struct session *ptr, const char *str);
+void send_buffer(struct session *ptr);
 
 #endif /* SERVER_H_SENTRY */
 

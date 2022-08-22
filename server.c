@@ -266,3 +266,8 @@ void send_string(struct session *ptr, const char *str)
         tcp_send(ptr->socket_d, str, strlen(str));
 }
 
+void send_buffer(struct session *ptr)
+{
+        tcp_send(ptr->socket_d, ptr->sendbuf, strlen(ptr->sendbuf));
+}
+
