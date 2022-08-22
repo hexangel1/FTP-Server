@@ -49,15 +49,36 @@ static void get_modify_time(char *buf, int len, time_t rawtime)
         strftime(buf, len, "%b %d %H:%M", tmptr);
 }
 
-void str_file_info(char *buf, int len, struct stat *st_buf, const char *name)
+int str_file_info(char *buf, int len, int dir_fd, const char *name)
 {
         char perms[10], mtimebuf[80], usrgrpbuf[80];
-        get_permissions(perms, st_buf->st_mode & ALLPERMS);
+        struct stat st_buf;
+        int res = fstatat(dir_fd, name, &st_buf, AT_SYMLINK_NOFOLLOW);
+        if (res == -1) {
+                perror("fstatat");
+                return -1;
+        }
+        get_permissions(perms, st_buf.st_mode & ALLPERMS);
         get_user_group(usrgrpbuf, sizeof(usrgrpbuf),
-                       st_buf->st_uid, st_buf->st_gid);
-        get_modify_time(mtimebuf, sizeof(mtimebuf), st_buf->st_mtime);
+                       st_buf.st_uid, st_buf.st_gid);
+        get_modify_time(mtimebuf, sizeof(mtimebuf), st_buf.st_mtime);
         snprintf(buf, len, "%c%s %4ld %s %8ld %s %s\r\n",
-                 get_file_type(st_buf->st_mode), perms, st_buf->st_nlink,
-                 usrgrpbuf, st_buf->st_size, mtimebuf, name);
+                 get_file_type(st_buf.st_mode), perms, st_buf.st_nlink,
+                 usrgrpbuf, st_buf.st_size, mtimebuf, name);
+        return 0;
+}
+
+int str_modify_time(char *buf, int len, int dir_fd, const char *name)
+{
+        struct tm *tmptr;
+        struct stat st_buf;
+        int res = fstatat(dir_fd, name, &st_buf, 0);
+        if (res == -1) {
+                perror("fstatat");
+                return -1;
+        }
+        tmptr = gmtime(&st_buf.st_mtime);
+        strftime(buf, len, "%Y%m%d%H%M%S", tmptr);
+        return 0;
 }
 

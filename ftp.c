@@ -227,7 +227,6 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
         if (pid == 0) {
                 char buf[256];
                 int res, dir_fd;
-                struct stat st_buf;
                 struct dirent *entry;
                 DIR *dp;
                 fchdir(ptr->curr_dir);
@@ -244,13 +243,9 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
                 dir_fd = dirfd(dp);
                 send_string(ptr, "150 Here comes the directory listing.\n");
                 while ((entry = readdir(dp))) {
-                        res = fstatat(dir_fd, entry->d_name, &st_buf, 0);
-                        if (res == -1) {
-                                perror("fstatat");
-                                continue;
-                        }
-                        str_file_info(buf, sizeof(buf), &st_buf, entry->d_name);
-                        tcp_send(conn, buf, strlen(buf));
+                        res = str_file_info(buf, sizeof(buf), dir_fd, entry->d_name);
+                        if (res != -1)
+                                tcp_send(conn, buf, strlen(buf));
                 }
                 tcp_shutdown(conn);
                 closedir(dp);
@@ -259,6 +254,18 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
         }
         ptr->txrx_pid = pid;
         transfer_mode_reset(ptr);
+}
+
+static void ftp_mdtm(struct ftp_request *ftp_req, struct session *ptr)
+{
+        char buf[128], resp[256];
+        int res = str_modify_time(buf, 128, ptr->curr_dir, ftp_req->arg);
+        if (res != -1) {
+                sprintf(resp, "200 %s\n", buf);
+                send_string(ptr, resp);
+        } else {
+                send_string(ptr, "550 FUCK YOU\n");
+        }
 }
 
 static void ftp_mkd(struct ftp_request *ftp_req, struct session *ptr)
@@ -543,7 +550,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
                 ftp_abor, ftp_cdup, ftp_cwd,  ftp_dele, ftp_fail,
-                ftp_help, ftp_list, ftp_fail, ftp_mkd,  ftp_nlst,
+                ftp_help, ftp_list, ftp_mdtm, ftp_mkd,  ftp_nlst,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_pwd,
                 ftp_quit, ftp_fail, ftp_retr, ftp_rmd,  ftp_fail,
                 ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
