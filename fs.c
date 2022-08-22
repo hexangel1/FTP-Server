@@ -39,8 +39,9 @@ static void get_user_group(char *buf, int len, int uid, int gid)
         pw = getpwuid(uid);
         gr = getgrgid(gid);
         if (!pw || !gr)
-                return;
-        snprintf(buf, len, "%-8s %-8s", pw->pw_name, gr->gr_name);
+                snprintf(buf, len, "%-5d %-5d", uid, gid);
+        else
+                snprintf(buf, len, "%-8s %-8s", pw->pw_name, gr->gr_name);
 }
 
 static void get_modify_time(char *buf, int len, time_t rawtime)

@@ -74,6 +74,9 @@ static void transfer_mode_reset(struct session *ptr)
         if (ptr->state == st_passive) {
                 close(ptr->sock_pasv);
                 ptr->sock_pasv = -1;
+        } else if (ptr->state == st_active) {
+                ptr->port_actv = 0;
+                memset(ptr->ip_actv, 0, sizeof(ptr->ip_actv));
         }
         ptr->state = st_normal;
 }
@@ -140,7 +143,6 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
         }
         if (ptr->txrx_pid > 0) {
                 kill(ptr->txrx_pid, SIGKILL);
-                ptr->txrx_pid = 0;
                 send_string(ptr, "226 Closing data connection.\n");
         }
 }
@@ -417,6 +419,19 @@ static void ftp_quit(struct ftp_request *ftp_req, struct session *ptr)
         ptr->state = st_goodbye;
 }
 
+static void ftp_rein(struct ftp_request *ftp_req, struct session *ptr)
+{
+        transfer_mode_reset(ptr);
+        free(ptr->username);
+        ptr->username = 0;
+        close(ptr->curr_dir);
+        ptr->curr_dir = open(".", O_RDONLY | O_DIRECTORY);
+        if (ptr->txrx_pid > 0)
+                kill(ptr->txrx_pid, SIGKILL);
+        ptr->state = st_login;
+        send_string(ptr, "220 Reset \n");
+}
+
 static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
 {
         int pid, status;
@@ -552,7 +567,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
                 ftp_abor, ftp_cdup, ftp_cwd,  ftp_dele, ftp_fail,
                 ftp_help, ftp_list, ftp_mdtm, ftp_mkd,  ftp_nlst,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_pwd,
-                ftp_quit, ftp_fail, ftp_retr, ftp_rmd,  ftp_fail,
+                ftp_quit, ftp_rein, ftp_retr, ftp_rmd,  ftp_fail,
                 ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
                 ftp_user
         };
