@@ -296,7 +296,7 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "504 Please select mode with PASV or PORT\n");
                 return;
         }
-        run_process(child_proc_ls, ftp_req->arg[0] ? ftp_req->arg : ".", ptr);
+        run_process(child_proc_ls, *ftp_req->arg ? ftp_req->arg : ".", ptr);
 }
 
 static void ftp_mdtm(struct ftp_request *ftp_req, struct session *ptr)
@@ -337,7 +337,7 @@ static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "504 Please select mode with PASV or PORT\n");
                 return;
         }
-        run_process(child_proc_nls, ftp_req->arg[0] ? ftp_req->arg : ".", ptr);
+        run_process(child_proc_nls, *ftp_req->arg ? ftp_req->arg : ".", ptr);
 }
 
 static void ftp_noop(struct ftp_request *ftp_req, struct session *ptr)
@@ -364,15 +364,15 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "530 Please login with USER and PASS.\n");
                 return;
         }
-        host = get_host_ip(ptr->socket_d);
-        port = MIN_PORT_NUM + rand() % (MAX_PORT_NUM - MIN_PORT_NUM + 1);
         if (ptr->sock_pasv != -1)
                 tcp_shutdown(ptr->sock_pasv);
+        host = get_host_ip(ptr->socket_d);
+        port = MIN_PORT_NUM + rand() % (MAX_PORT_NUM - MIN_PORT_NUM + 1);
         ptr->sock_pasv = tcp_create_socket(host, port);
         sscanf(host ,"%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3]);
         snprintf(ptr->sendbuf, OUTBUFSIZE,
                  "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
-                 ip[0], ip[1], ip[2], ip[3], port >> 8, port & 0x00FF);
+                 ip[0], ip[1], ip[2], ip[3], port >> 8, port & 0xFF);
         send_buffer(ptr);
         ptr->state = st_passive;
 }
@@ -384,9 +384,9 @@ static void ftp_port(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "530 Please login with USER and PASS.\n");
                 return;
         }
-        send_string(ptr, "227 Entering Active Mode\n");
         if (ptr->sock_pasv != -1)
                 tcp_shutdown(ptr->sock_pasv);
+        send_string(ptr, "227 Entering Active Mode\n");
         memset(ip, 0, sizeof(ip));
         memset(port, 0, sizeof(port));
         sscanf(ftp_req->arg ,"%d,%d,%d,%d,%d,%d",
@@ -425,7 +425,7 @@ static void ftp_rein(struct ftp_request *ftp_req, struct session *ptr)
         free(ptr->username);
         ptr->username = 0;
         close(ptr->curr_dir);
-        ptr->curr_dir = open(".", O_RDONLY | O_DIRECTORY);
+        ptr->curr_dir = get_current_dir_fd();
         if (ptr->txrx_pid > 0)
                 kill(ptr->txrx_pid, SIGKILL);
         ptr->state = st_login;

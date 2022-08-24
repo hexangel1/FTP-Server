@@ -44,11 +44,22 @@ struct tcp_server {
         struct session *sess;
 };
 
+/* handles signals, listening socket and client connections */
 void tcp_server_handle(struct tcp_server *serv);
+
+/* starts tcp server */
 int tcp_server_up(struct tcp_server *serv);
+
+/* stops tcp server */
 void tcp_server_down(struct tcp_server *serv);
+
+/* creates new tcp server */
 struct tcp_server *new_tcp_server(const char *ip, unsigned short port);
+
+/* sends string to session */
 void send_string(struct session *ptr, const char *str);
+
+/* sends accumulated buffer to session */
 void send_buffer(struct session *ptr);
 
 #endif /* SERVER_H_SENTRY */

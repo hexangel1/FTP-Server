@@ -12,6 +12,7 @@
 #include "server.h"
 #include "ftp.h"
 #include "tcp.h"
+#include "fs.h"
 
 static volatile sig_atomic_t sig_event_flag = sigev_no_events;
 
@@ -54,7 +55,7 @@ static void create_session(struct session **sess, int fd, const char *addr)
         tmp->buf_used = 0;
         strncpy(tmp->address, addr, sizeof(tmp->address));
         tmp->username = 0;
-        tmp->curr_dir = open(".", O_RDONLY | O_DIRECTORY);
+        tmp->curr_dir = get_current_dir_fd();
         tmp->sock_pasv = -1;
         tmp->port_actv = 0;
         memset(tmp->ip_actv, 0, sizeof(tmp->ip_actv));

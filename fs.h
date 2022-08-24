@@ -1,10 +1,10 @@
 #ifndef FS_H_SENTRY
 #define FS_H_SENTRY
 
-/* writes in buf inforamation about file */
+/* writes in buf information about file */
 int str_file_info(char *buf, int len, const char *name, int dir_fd);
 
-/* writes in buf modify time */
+/* writes in buf file modify time */
 int str_modify_time(char *buf, int len, const char *name, int dir_fd);
 
 /* changes current directory */
@@ -24,6 +24,9 @@ int remove_directory(const char *path, int dir_fd);
 
 /* removes file by path in directory associated with dir_fd */
 int remove_file(const char *path, int dir_fd);
+
+/* returns fd associated with current directory */
+int get_current_dir_fd();
 
 #endif /* FS_H_SENTRY */
 

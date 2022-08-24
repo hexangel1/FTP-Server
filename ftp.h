@@ -18,6 +18,7 @@ typedef int (*ftp_process) (const char *, struct session *);
 extern const char *const ftp_greet_message;
 extern const char *const ftp_error_message;
 
+/* executes ftp command */
 void execute_cmd(struct session *ptr, const char *cmdstring);
 
 #endif /* FTP_H_SENTRY */

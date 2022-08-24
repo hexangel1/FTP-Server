@@ -6,6 +6,7 @@
 #include <time.h>
 #include <pwd.h>
 #include <grp.h>
+#include "fs.h"
 
 static int get_file_type(int mode)
 {
@@ -39,10 +40,10 @@ static void get_user_group(char *buf, int len, int uid, int gid)
         struct group *gr;
         pw = getpwuid(uid);
         gr = getgrgid(gid);
-        if (!pw || !gr)
-                snprintf(buf, len, "%-5d %-5d", uid, gid);
-        else
+        if (pw && gr)
                 snprintf(buf, len, "%-8s %-8s", pw->pw_name, gr->gr_name);
+        else
+                snprintf(buf, len, "%-5d %-5d", uid, gid);
 }
 
 static void get_modify_time(char *buf, int len, time_t rawtime)
@@ -84,14 +85,14 @@ int str_modify_time(char *buf, int len, const char *name, int dir_fd)
         return 0;
 }
 
-int change_directory(const char *path, int curr_dir)
+int change_directory(const char *path, int dir_fd)
 {
-        int new_dir = openat(curr_dir, path, O_RDONLY | O_DIRECTORY);
+        int new_dir = openat(dir_fd, path, O_RDONLY | O_DIRECTORY);
         if (new_dir == -1) {
                 perror("openat");
                 return -1;
         }
-        close(curr_dir);
+        close(dir_fd);
         return new_dir;
 }
 
@@ -99,7 +100,7 @@ int get_directory_path(char *buf, int size, int dir_fd)
 {
         char *path;
         int res, curr_dir;
-        curr_dir = open(".", O_RDONLY | O_DIRECTORY);
+        curr_dir = get_current_dir_fd();
         if (curr_dir == -1) {
                 perror("open");
                 return -1;
@@ -140,5 +141,10 @@ int remove_directory(const char *path, int dir_fd)
 int remove_file(const char *path, int dir_fd)
 {
         return unlinkat(dir_fd, path, 0);
+}
+
+int get_current_dir_fd()
+{
+        return open(".", O_RDONLY | O_DIRECTORY);
 }
 
