@@ -1,3 +1,10 @@
+#ifdef FOR_LINUX
+#define _GNU_SOURCE
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/sendfile.h>
+#undef  _GNU_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +13,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/sendfile.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -67,7 +73,7 @@ int tcp_connect(const char *ipaddr, unsigned short port)
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
-        if (!inet_aton(ipaddr, &addr.sin_addr)) {
+        if (!inet_pton(AF_INET, ipaddr, &addr.sin_addr)) {
                 fprintf(stderr,"Invalid ip address\n");
                 return -1;
         }
@@ -115,7 +121,7 @@ ssize_t tcp_recv(int sockfd, char *buf, size_t len)
         return recv(sockfd, buf, len, 0);
 }
 
-#ifdef LINUX
+#ifdef FOR_LINUX
 int tcp_transmit(int sockfd, int fd)
 {
         struct stat st_buf;
@@ -133,27 +139,7 @@ int tcp_transmit(int sockfd, int fd)
         }
         return 0;
 }
-#else
-int tcp_transmit(int sockfd, int fd)
-{
-        ssize_t rc, wc;
-        char buf[4096];
-        while ((rc = read(fd, buf, sizeof(buf))) > 0) {
-                wc = send(sockfd, buf, rc, 0);
-                if (wc != rc) {
-                        perror("write");
-                        return -1;
-                }
-        }
-        if (rc != 0) {
-                perror("read");
-                return -1;
-        }
-        return 0;
-}
-#endif
 
-#ifdef LINUX
 int tcp_receive(int sockfd, int fd)
 {
         ssize_t rc;
@@ -179,6 +165,24 @@ int tcp_receive(int sockfd, int fd)
         return 0;
 }
 #else
+int tcp_transmit(int sockfd, int fd)
+{
+        ssize_t rc, wc;
+        char buf[4096];
+        while ((rc = read(fd, buf, sizeof(buf))) > 0) {
+                wc = send(sockfd, buf, rc, 0);
+                if (wc != rc) {
+                        perror("send");
+                        return -1;
+                }
+        }
+        if (rc != 0) {
+                perror("read");
+                return -1;
+        }
+        return 0;
+}
+
 int tcp_receive(int sockfd, int fd)
 {
         ssize_t rc, wc;
@@ -191,7 +195,7 @@ int tcp_receive(int sockfd, int fd)
                 }
         }
         if (rc != 0) {
-                perror("read");
+                perror("recv");
                 return -1;
         }
         return 0;

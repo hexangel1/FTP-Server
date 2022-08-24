@@ -106,7 +106,7 @@ static void remove_zombies(struct session *sess)
 {
         int pid, res;
         struct session *tmp;
-        while ((pid = wait4(-1, &res, WNOHANG, NULL)) > 0) {
+        while ((pid = waitpid(-1, &res, WNOHANG)) > 0) {
                 if (!WIFEXITED(res) && !WIFSIGNALED(res))
                         continue;
                 if ((WIFEXITED(res) && WEXITSTATUS(res)) || WIFSIGNALED(res))

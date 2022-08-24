@@ -3,14 +3,14 @@ SOURCES = $(wildcard *.c)
 HEADERS = $(filter-out main.h, $(SOURCES:.c=.h))
 OBJECTS = $(SOURCES:.c=.o)
 SPECIAL = Makefile README.md LICENSE
+CSOURCE = -D _XOPEN_SOURCE=500 -D _POSIX_C_SOURCE=200809L -D FOR_LINUX
 CC = gcc
-CFLAGS = -Wall -g -ansi -pedantic -D _GNU_SOURCE -D LINUX
-LDLIBS =
+CFLAGS = -Wall -g -ansi -pedantic $(CSOURCE)
 CTAGS = ctags
 ARGV = 127.0.0.1 2000
 
 $(PROJECT): $(OBJECTS)
-	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDLIBS)
+	$(CC) $(CFLAGS) -o $@ $(OBJECTS)
 
 %.o: %.c %.h
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -31,7 +31,7 @@ memcheck: $(PROJECT)
 	valgrind -s --leak-check=full ./$(PROJECT) $(ARGV)
 
 systrace: $(PROJECT)
-	strace ./$(PROJECT) $(ARGV)
+	strace -f ./$(PROJECT) $(ARGV)
 
 tags: $(SOURCES) $(HEADERS)
 	$(CTAGS) $(SOURCES) $(HEADERS)

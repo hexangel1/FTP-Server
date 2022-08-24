@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -50,7 +51,7 @@ static void get_modify_time(char *buf, int len, time_t rawtime)
         strftime(buf, len, "%b %d %H:%M", tmptr);
 }
 
-int str_file_info(char *buf, int len, int dir_fd, const char *name)
+int str_file_info(char *buf, int len, const char *name, int dir_fd)
 {
         char perms[10], mtimebuf[80], usrgrpbuf[80];
         struct stat st_buf;
@@ -59,7 +60,7 @@ int str_file_info(char *buf, int len, int dir_fd, const char *name)
                 perror("fstatat");
                 return -1;
         }
-        get_permissions(perms, st_buf.st_mode & ALLPERMS);
+        get_permissions(perms, st_buf.st_mode);
         get_user_group(usrgrpbuf, sizeof(usrgrpbuf),
                        st_buf.st_uid, st_buf.st_gid);
         get_modify_time(mtimebuf, sizeof(mtimebuf), st_buf.st_mtime);
@@ -69,7 +70,7 @@ int str_file_info(char *buf, int len, int dir_fd, const char *name)
         return 0;
 }
 
-int str_modify_time(char *buf, int len, int dir_fd, const char *name)
+int str_modify_time(char *buf, int len, const char *name, int dir_fd)
 {
         struct tm *tmptr;
         struct stat st_buf;
@@ -81,5 +82,63 @@ int str_modify_time(char *buf, int len, int dir_fd, const char *name)
         tmptr = gmtime(&st_buf.st_mtime);
         strftime(buf, len, "%Y%m%d%H%M%S", tmptr);
         return 0;
+}
+
+int change_directory(const char *path, int curr_dir)
+{
+        int new_dir = openat(curr_dir, path, O_RDONLY | O_DIRECTORY);
+        if (new_dir == -1) {
+                perror("openat");
+                return -1;
+        }
+        close(curr_dir);
+        return new_dir;
+}
+
+int get_directory_path(char *buf, int size, int dir_fd)
+{
+        char *path;
+        int res, curr_dir;
+        curr_dir = open(".", O_RDONLY | O_DIRECTORY);
+        if (curr_dir == -1) {
+                perror("open");
+                return -1;
+        }
+        res = fchdir(dir_fd);
+        if (res == -1) {
+                perror("fchdir");
+                return -1;
+        }
+        path = getcwd(buf, size);
+        fchdir(curr_dir);
+        close(curr_dir);
+        return path ? 0 : -1;
+}
+
+long get_file_size(const char *path, int dir_fd)
+{
+        struct stat st_buf;
+        int res;
+        res = fstatat(dir_fd, path, &st_buf, 0);
+        if (res == -1) {
+                perror("statat");
+                return -1;
+        }
+        return st_buf.st_size;
+}
+
+int create_directory(const char *path, int dir_fd)
+{
+        return mkdirat(dir_fd, path, 0755);
+}
+
+int remove_directory(const char *path, int dir_fd)
+{
+        return unlinkat(dir_fd, path, AT_REMOVEDIR);
+}
+
+int remove_file(const char *path, int dir_fd)
+{
+        return unlinkat(dir_fd, path, 0);
 }
 
