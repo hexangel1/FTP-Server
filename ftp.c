@@ -409,6 +409,7 @@ static void ftp_rein(struct ftp_request *ftp_req, struct session *ptr)
         transfer_mode_reset(ptr);
         free(ptr->username);
         ptr->username = 0;
+        set_token(ptr, NULL);
         close(ptr->curr_dir);
         ptr->curr_dir = get_current_dir_fd();
         if (ptr->txrx_pid > 0)
@@ -444,6 +445,33 @@ static void ftp_rmd(struct ftp_request *ftp_req, struct session *ptr)
         } else {
                 send_string(ptr, "250 Directory remove completed.\n");
         }
+}
+
+static void ftp_rnfr(struct ftp_request *ftp_req, struct session *ptr)
+{
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Not logged in.\n");
+                return;
+        }
+        send_string(ptr, "350 Needs new path name\n");
+        set_token(ptr, ftp_req->arg);
+}
+
+static void ftp_rnto(struct ftp_request *ftp_req, struct session *ptr)
+{
+        int res;
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Not logged in.\n");
+                return;
+        }
+        res = rename_file(ptr->token, ftp_req->arg, ptr->curr_dir);
+        if (res == -1) {
+                perror("rename_file");
+                send_string(ptr, "550 Path rename failed.\n");
+        } else {
+                send_string(ptr, "250 Path rename completed.\n");
+        }
+        set_token(ptr, NULL);
 }
 
 static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
@@ -517,8 +545,8 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
                 ftp_abor, ftp_cdup, ftp_cwd,  ftp_dele, ftp_fail,
                 ftp_help, ftp_list, ftp_mdtm, ftp_mkd,  ftp_nlst,
                 ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_pwd,
-                ftp_quit, ftp_rein, ftp_retr, ftp_rmd,  ftp_fail,
-                ftp_fail, ftp_size, ftp_stor, ftp_syst, ftp_type,
+                ftp_quit, ftp_rein, ftp_retr, ftp_rmd,  ftp_rnfr,
+                ftp_rnto, ftp_size, ftp_stor, ftp_syst, ftp_type,
                 ftp_user
         };
         struct ftp_request ftp_req;

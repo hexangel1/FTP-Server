@@ -25,6 +25,9 @@ int remove_directory(const char *path, int dir_fd);
 /* removes file by path in directory associated with dir_fd */
 int remove_file(const char *path, int dir_fd);
 
+/* renames file from oldpath to newpath in directory associated with dir_fd */
+int rename_file(const char *oldpath, const char *newpath, int dir_fd);
+
 /* returns fd associated with current directory */
 int get_current_dir_fd();
 

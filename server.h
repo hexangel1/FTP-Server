@@ -28,6 +28,7 @@ struct session {
         char sendbuf[OUTBUFSIZE];
         char address[ADDRESS_LEN];
         char *username;
+        char *token;
         int curr_dir;
         int sock_pasv;
         int port_actv;
@@ -55,6 +56,9 @@ void tcp_server_down(struct tcp_server *serv);
 
 /* creates new tcp server */
 struct tcp_server *new_tcp_server(const char *ip, unsigned short port);
+
+/* sets token to session */
+void set_token(struct session *ptr, const char *str);
 
 /* sends string to session */
 void send_string(struct session *ptr, const char *str);

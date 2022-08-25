@@ -55,6 +55,7 @@ static void create_session(struct session **sess, int fd, const char *addr)
         tmp->buf_used = 0;
         strncpy(tmp->address, addr, sizeof(tmp->address));
         tmp->username = 0;
+        tmp->token = 0;
         tmp->curr_dir = get_current_dir_fd();
         tmp->sock_pasv = -1;
         tmp->port_actv = 0;
@@ -76,6 +77,8 @@ static void delete_session(struct session *sess)
                 kill(sess->txrx_pid, SIGKILL);
         if (sess->username)
                 free(sess->username);
+        if (sess->token)
+                free(sess->token);
         free(sess);
 }
 
@@ -260,6 +263,13 @@ struct tcp_server *new_tcp_server(const char *ip, unsigned short port)
         serv->ipaddr = strdup(ip);
         serv->sess = NULL;
         return serv;
+}
+
+void set_token(struct session *ptr, const char *str)
+{
+        if (ptr->token)
+                free(ptr->token);
+        ptr->token = str ? strdup(str) : NULL;
 }
 
 void send_string(struct session *ptr, const char *str)

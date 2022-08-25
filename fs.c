@@ -143,6 +143,11 @@ int remove_file(const char *path, int dir_fd)
         return unlinkat(dir_fd, path, 0);
 }
 
+int rename_file(const char *oldpath, const char *newpath, int dir_fd)
+{
+        return renameat(dir_fd, oldpath, dir_fd, newpath);
+}
+
 int get_current_dir_fd()
 {
         return open(".", O_RDONLY | O_DIRECTORY);
