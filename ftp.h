@@ -12,8 +12,8 @@ struct ftp_request {
         char arg[1024];
 };
 
+typedef int  (*ftp_routine) (const char *, int, struct session *);
 typedef void (*ftp_handler) (struct ftp_request *, struct session *);
-typedef int (*ftp_process) (const char *, struct session *);
 
 extern const char *const ftp_greet_message;
 extern const char *const ftp_error_message;

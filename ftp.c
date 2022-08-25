@@ -11,8 +11,8 @@
 #include "fs.h"
 #include "server.h"
 
-const char *const ftp_greet_message = "220 Welcome!\n";
-const char *const ftp_error_message = "500 Bad command\n";
+const char *const ftp_greet_message = "220 Service ready for new user.\n";
+const char *const ftp_error_message = "500 Command line too long.\n";
 
 static const char *const cmd_table[] = {
         "ABOR", "CDUP", "CWD",  "DELE", "EPSV",
@@ -79,39 +79,39 @@ static void transfer_mode_reset(struct session *ptr)
         ptr->state = st_normal;
 }
 
-static void run_process(ftp_process proc, const char *path, struct session *ptr)
+static void run_process(ftp_routine child, const char *f, struct session *ptr)
 {
-        int pid, code;
+        int pid, code, conn;
         if (ptr->txrx_pid > 0) {
-                send_string(ptr, "451 Wait transmission to finish\n");
+                send_string(ptr, "451 Wait transmission to finish.\n");
                 return;
         }
         pid = fork();
         if (pid == -1) {
                 perror("fork");
-                send_string(ptr, "451 Internal Server Error\n");
+                send_string(ptr, "451 Internal Server Error.\n");
                 return;
         }
         if (pid == 0) {
+                conn = make_connection(ptr);
+                if (conn == -1) {
+                        send_string(ptr, "451 Connection failed.\n");
+                        exit(1);
+                }
                 fchdir(ptr->curr_dir);
-                code = proc(path, ptr);
+                code = child(f, conn, ptr);
                 exit(code);
         }
         ptr->txrx_pid = pid;
         transfer_mode_reset(ptr);
 }
 
-static int child_proc_ls(const char *dirname, struct session *ptr)
+static int list_directory(const char *dirname, int conn, struct session *ptr)
 {
-        char buf[256];
-        int conn, res, dir_fd;
         DIR *dirp;
         struct dirent *dent;
-        conn = make_connection(ptr);
-        if (conn == -1) {
-                send_string(ptr, "451 Internal Server Error\n");
-                return 1;
-        }
+        char buf[256];
+        int res, dir_fd;
         dirp = opendir(dirname);
         if (!dirp) {
                 send_string(ptr, "550 Failed to open directory.\n");
@@ -124,22 +124,16 @@ static int child_proc_ls(const char *dirname, struct session *ptr)
                 if (res != -1)
                         tcp_send(conn, buf, strlen(buf));
         }
+        send_string(ptr, "226 Closing data connetion.\n");
         tcp_shutdown(conn);
         closedir(dirp);
-        send_string(ptr, "226 Directory send OK.\n");
         return 0;
 }
 
-static int child_proc_nls(const char *dirname, struct session *ptr)
+static int nlst_directory(const char *dirname, int conn, struct session *ptr)
 {
-        int conn;
         DIR *dirp;
         struct dirent *dent;
-        conn = make_connection(ptr);
-        if (conn == -1) {
-                send_string(ptr, "451 Internal Server Error\n");
-                return 1;
-        }
         dirp = opendir(dirname);
         if (!dirp) {
                 send_string(ptr, "550 Failed to open directory.\n");
@@ -150,55 +144,45 @@ static int child_proc_nls(const char *dirname, struct session *ptr)
                 tcp_send(conn, dent->d_name, strlen(dent->d_name));
                 tcp_send(conn, "\r\n", 2);
         }
+        send_string(ptr, "226 Closing data connetion.\n");
         tcp_shutdown(conn);
         closedir(dirp);
-        send_string(ptr, "226 Directory send OK.\n");
         return 0;
 }
 
-static int child_proc_tx(const char *filename, struct session *ptr)
+static int file_download(const char *filename, int conn, struct session *ptr)
 {
-        int conn, fd, res;
-        conn = make_connection(ptr);
-        if (conn == -1) {
-                send_string(ptr, "451 Internal Server Error\n");
-                return 1;
-        }
+        int fd, res;
         fd = open(filename, O_RDONLY);
         if (fd == -1) {
                 perror("open");
                 tcp_shutdown(conn);
-                send_string(ptr, "550 Failed to get file\n");
+                send_string(ptr, "550 Failed to get file.\n");
                 return 1;
         }
-        send_string(ptr, "125 Channel open, data exchange started\n");
+        send_string(ptr, "125 Data connection opened, transfer starting.\n");
         res = tcp_transmit(conn, fd);
         tcp_shutdown(conn);
         close(fd);
         if (res == -1) {
-                send_string(ptr, "500 File transmission failed.\n");
+                send_string(ptr, "451 File transmission failed.\n");
                 return 1;
         }
-        send_string(ptr, "226 File send OK.\n");
+        send_string(ptr, "226 Closing data connetion. File received OK.\n");
         return 0;
 }
 
-static int child_proc_rx(const char *filename, struct session *ptr)
+static int file_upload(const char *filename, int conn, struct session *ptr)
 {
-        int conn, fd, res;
-        conn = make_connection(ptr);
-        if (conn == -1) {
-                send_string(ptr, "451 Internal Server Error\n");
-                return 1;
-        }
-        fd = open(filename, O_WRONLY | O_CREAT, 0644);
+        int fd, res;
+        fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd == -1) {
                 perror("open");
                 tcp_shutdown(conn);
                 send_string(ptr, "553 No such file or directory.\n");
                 return 1;
         }
-        send_string(ptr, "125 Channel open, data exchange started\n");
+        send_string(ptr, "125 Data connection opened, transfer starting.\n");
         res = tcp_receive(conn, fd);
         tcp_shutdown(conn);
         close(fd);
@@ -206,14 +190,14 @@ static int child_proc_rx(const char *filename, struct session *ptr)
                 send_string(ptr, "451 File transmission failed.\n");
                 return 1;
         }
-        send_string(ptr, "226 File send OK.\n");
+        send_string(ptr, "226 Closing data connetion. File send OK.\n");
         return 0;
 }
 
 static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         if (ptr->txrx_pid > 0) {
@@ -228,7 +212,7 @@ static void ftp_cdup(struct ftp_request *ftp_req, struct session *ptr)
 {
         int dir_fd;
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         dir_fd = change_directory("..", ptr->curr_dir);
@@ -244,7 +228,7 @@ static void ftp_cwd(struct ftp_request *ftp_req, struct session *ptr)
 {
         int dir_fd;
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         dir_fd = change_directory(ftp_req->arg, ptr->curr_dir);
@@ -260,15 +244,15 @@ static void ftp_dele(struct ftp_request *ftp_req, struct session *ptr)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         res = remove_file(ftp_req->arg, ptr->curr_dir);
         if (res == -1) {
                 perror("remove_file");
-                send_string(ptr, "550 Failed to remove file.\n");
+                send_string(ptr, "550 File remove failed.\n");
         } else {
-                send_string(ptr, "257 File removed\n");
+                send_string(ptr, "250 File remove completed.\n");
         }
 }
 
@@ -289,14 +273,14 @@ static void ftp_help(struct ftp_request *ftp_req, struct session *ptr)
 static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         if (ptr->state == st_normal) {
                 send_string(ptr, "504 Please select mode with PASV or PORT\n");
                 return;
         }
-        run_process(child_proc_ls, *ftp_req->arg ? ftp_req->arg : ".", ptr);
+        run_process(list_directory, *ftp_req->arg ? ftp_req->arg : ".", ptr);
 }
 
 static void ftp_mdtm(struct ftp_request *ftp_req, struct session *ptr)
@@ -304,10 +288,10 @@ static void ftp_mdtm(struct ftp_request *ftp_req, struct session *ptr)
         char buf[128];
         int res = str_modify_time(buf, 128, ftp_req->arg, ptr->curr_dir);
         if (res != -1) {
-                snprintf(ptr->sendbuf, OUTBUFSIZE, "200 %s\n", buf);
+                snprintf(ptr->sendbuf, OUTBUFSIZE, "200 %s.\n", buf);
                 send_buffer(ptr);
         } else {
-                send_string(ptr, "550 Could not get modify time\n");
+                send_string(ptr, "550 Get modify time failed.\n");
         }
 }
 
@@ -315,43 +299,44 @@ static void ftp_mkd(struct ftp_request *ftp_req, struct session *ptr)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         res = create_directory(ftp_req->arg, ptr->curr_dir);
         if (res == -1) {
                 perror("create_directory");
-                send_string(ptr, "550 Failed to create directory.\n");
+                send_string(ptr, "550 Directory create failed.\n");
         } else {
-                send_string(ptr, "257 New directory created\n");
+                sprintf(ptr->buf, "257 %s created.\n", ftp_req->arg);
+                send_buffer(ptr);
         }
 }
 
 static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         if (ptr->state == st_normal) {
                 send_string(ptr, "504 Please select mode with PASV or PORT\n");
                 return;
         }
-        run_process(child_proc_nls, *ftp_req->arg ? ftp_req->arg : ".", ptr);
+        run_process(nlst_directory, *ftp_req->arg ? ftp_req->arg : ".", ptr);
 }
 
 static void ftp_noop(struct ftp_request *ftp_req, struct session *ptr)
 {
-        send_string(ptr, "200 NOOP OK!\n");
+        send_string(ptr, "200 Success.\n");
 }
 
 static void ftp_pass(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_passwd) {
                 ptr->state = st_normal;
-                send_string(ptr, "230 Login successful\n");
+                send_string(ptr, "230 User logged in, proceed.\n");
         } else {
-                send_string(ptr, "500 Invalid username or password\n");
+                send_string(ptr, "500 Invalid username or password.\n");
         }
 }
 
@@ -361,7 +346,7 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
         const char *host;
         unsigned short port;
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         if (ptr->sock_pasv != -1)
@@ -371,7 +356,7 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
         ptr->sock_pasv = tcp_create_socket(host, port);
         sscanf(host ,"%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3]);
         snprintf(ptr->sendbuf, OUTBUFSIZE,
-                 "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\n",
+                 "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\n",
                  ip[0], ip[1], ip[2], ip[3], port >> 8, port & 0xFF);
         send_buffer(ptr);
         ptr->state = st_passive;
@@ -381,12 +366,12 @@ static void ftp_port(struct ftp_request *ftp_req, struct session *ptr)
 {
         int ip[4], port[2];
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         if (ptr->sock_pasv != -1)
                 tcp_shutdown(ptr->sock_pasv);
-        send_string(ptr, "227 Entering Active Mode\n");
+        send_string(ptr, "200 Entering Active Mode.\n");
         memset(ip, 0, sizeof(ip));
         memset(port, 0, sizeof(port));
         sscanf(ftp_req->arg ,"%d,%d,%d,%d,%d,%d",
@@ -401,21 +386,21 @@ static void ftp_pwd(struct ftp_request *ftp_req, struct session *ptr)
         int res;
         char path[256];
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         res = get_directory_path(path, sizeof(path), ptr->curr_dir);
         if (res != -1) {
-                snprintf(ptr->sendbuf, OUTBUFSIZE, "220 %s\n", path);
+                snprintf(ptr->sendbuf, OUTBUFSIZE, "200 %s\n", path);
                 send_buffer(ptr);
         } else {
-                send_string(ptr, "550 Failed to get pwd.\n");
+                send_string(ptr, "550 Get pwd failed.\n");
         }
 }
 
 static void ftp_quit(struct ftp_request *ftp_req, struct session *ptr)
 {
-        send_string(ptr, "221 Goodbye!\n");
+        send_string(ptr, "221 Service closing control connection.\n");
         ptr->state = st_goodbye;
 }
 
@@ -429,35 +414,35 @@ static void ftp_rein(struct ftp_request *ftp_req, struct session *ptr)
         if (ptr->txrx_pid > 0)
                 kill(ptr->txrx_pid, SIGKILL);
         ptr->state = st_login;
-        send_string(ptr, "220 Session reseted\n");
+        send_string(ptr, "220 Session restarted.\n");
 }
 
 static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         if (ptr->state == st_normal) {
                 send_string(ptr, "504 Please select mode with PASV or PORT\n");
                 return;
         }
-        run_process(child_proc_tx, ftp_req->arg, ptr);
+        run_process(file_download, ftp_req->arg, ptr);
 }
 
 static void ftp_rmd(struct ftp_request *ftp_req, struct session *ptr)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         res = remove_directory(ftp_req->arg, ptr->curr_dir);
         if (res == -1) {
                 perror("remove_directory");
-                send_string(ptr, "550 Failed to remove directory.\n");
+                send_string(ptr, "550 Directory remove failed.\n");
         } else {
-                send_string(ptr, "250 Directory removed\n");
+                send_string(ptr, "250 Directory remove completed.\n");
         }
 }
 
@@ -465,7 +450,7 @@ static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
 {
         long size;
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         size = get_file_size(ftp_req->arg, ptr->curr_dir);
@@ -480,14 +465,14 @@ static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
 static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
                 return;
         }
         if (ptr->state == st_normal) {
-                send_string(ptr, "504 Please select mode with PASV or PORT\n");
+                send_string(ptr, "504 Please select mode with PASV or PORT.\n");
                 return;
         }
-        run_process(child_proc_rx, ftp_req->arg, ptr);
+        run_process(file_upload, ftp_req->arg, ptr);
 }
 
 static void ftp_syst(struct ftp_request *ftp_req, struct session *ptr)
@@ -499,13 +484,14 @@ static void ftp_type(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state != st_login && ptr->state != st_passwd) {
                 if (ftp_req->arg[0] == 'I')
-                        send_string(ptr, "200 Switching to Binary mode.\n");
+                        send_string(ptr, "200 Switching to binary mode.\n");
                 else if (ftp_req->arg[0] == 'A')
                         send_string(ptr, "200 Switching to ASCII mode.\n");
                 else
-                        send_string(ptr, "504 Unknown parameter.\n");
+                        send_string(ptr,
+                        "504 Command not implemented for that parameter.\n");
         } else {
-                send_string(ptr, "530 Please login with USER and PASS.\n");
+                send_string(ptr, "530 Not logged in.\n");
         }
 }
 
@@ -514,15 +500,15 @@ static void ftp_user(struct ftp_request *ftp_req, struct session *ptr)
         if (check_username(ftp_req->arg)) {
                 ptr->username = strdup(ftp_req->arg);
                 ptr->state = st_passwd;
-                send_string(ptr, "331 Username ok, enter password\n");
+                send_string(ptr, "331 User name okay, enter password.\n");
         } else {
-                send_string(ptr, "530 Invalid username\n");
+                send_string(ptr, "530 Not logged in.\n");
         }
 }
 
 static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
 {
-        send_string(ptr, "202 Not implemented\n");
+        send_string(ptr, "502 Not implemented.\n");
 }
 
 void execute_cmd(struct session *ptr, const char *cmdstring)
@@ -538,7 +524,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
         struct ftp_request ftp_req;
         parse_command(&ftp_req, cmdstring);
         if (ftp_req.cmd_idx == -1) {
-                send_string(ptr, "202 Unknown command\n");
+                send_string(ptr, "202 Unknown command.\n");
                 return;
         }
         handlers[ftp_req.cmd_idx](&ftp_req, ptr);
