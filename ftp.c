@@ -15,12 +15,12 @@ const char *const ftp_greet_message = "220 Service ready for new user.\n";
 const char *const ftp_error_message = "500 Command line too long.\n";
 
 static const char *const cmd_table[] = {
-        "ABOR", "CDUP", "CWD",  "DELE", "EPSV",
-        "HELP", "LIST", "MDTM", "MKD",  "NLST",
-        "NOOP", "PASS", "PASV", "PORT", "PWD",
-        "QUIT", "REIN", "RETR", "RMD",  "RNFR",
-        "RNTO", "SIZE", "STOR", "SYST", "TYPE",
-        "USER"
+        "ABOR", "ALLO", "APPE", "CDUP", "CWD",
+        "DELE", "EPSV", "HELP", "LIST", "MDTM",
+        "MKD",  "NLST", "NOOP", "PASS", "PASV",
+        "PORT", "PWD",  "QUIT", "REIN", "RETR",
+        "RMD",  "RNFR", "RNTO", "SIZE", "STAT",
+        "STOR", "STRU", "SYST", "TYPE", "USER"
 };
 
 static const char *const user_table[] = {
@@ -542,12 +542,12 @@ static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
 void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
-                ftp_abor, ftp_cdup, ftp_cwd,  ftp_dele, ftp_fail,
-                ftp_help, ftp_list, ftp_mdtm, ftp_mkd,  ftp_nlst,
-                ftp_noop, ftp_pass, ftp_pasv, ftp_port, ftp_pwd,
-                ftp_quit, ftp_rein, ftp_retr, ftp_rmd,  ftp_rnfr,
-                ftp_rnto, ftp_size, ftp_stor, ftp_syst, ftp_type,
-                ftp_user
+                ftp_abor, ftp_fail, ftp_fail, ftp_cdup, ftp_cwd,
+                ftp_dele, ftp_fail, ftp_help, ftp_list, ftp_mdtm,
+                ftp_mkd,  ftp_nlst, ftp_noop, ftp_pass, ftp_pasv,
+                ftp_port, ftp_pwd,  ftp_quit, ftp_rein, ftp_retr,
+                ftp_rmd,  ftp_rnfr, ftp_rnto, ftp_size, ftp_fail,
+                ftp_stor, ftp_fail, ftp_syst, ftp_type, ftp_user
         };
         struct ftp_request ftp_req;
         parse_command(&ftp_req, cmdstring);
