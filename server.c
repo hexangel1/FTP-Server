@@ -5,14 +5,17 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <sys/types.h>
-#include <sys/select.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <time.h>
+#include <poll.h>
 #include "server.h"
 #include "ftp.h"
 #include "tcp.h"
 #include "fs.h"
+
+int ppoll(struct pollfd *fds, nfds_t nfds,
+          const struct timespec *tmo_p, const sigset_t *sigmask);
 
 static volatile sig_atomic_t sig_event_flag = sigev_no_events;
 
@@ -26,7 +29,68 @@ static void signal_handler(int signum)
                 sig_event_flag = sigev_terminate;
 }
 
-static void set_sigactions(sigset_t *orig_mask)
+static struct session *create_session(int idx, int fd, const char *addr)
+{
+        struct session *ptr = malloc(sizeof(*ptr));
+        ptr->fds_idx = idx;
+        ptr->socket_d = fd;
+        ptr->buf_used = 0;
+        strncpy(ptr->address, addr, sizeof(ptr->address));
+        ptr->username = 0;
+        ptr->token = 0;
+        ptr->curr_dir = get_current_dir_fd();
+        ptr->sock_pasv = -1;
+        ptr->port_actv = 0;
+        memset(ptr->ip_actv, 0, sizeof(ptr->ip_actv));
+        ptr->txrx_pid = 0;
+        ptr->state = st_login;
+        send_string(ptr, ftp_greet_message);
+        return ptr;
+}
+
+static void delete_session(struct session *ptr)
+{
+        close(ptr->curr_dir);
+        tcp_shutdown(ptr->socket_d);
+        if (ptr->sock_pasv != -1)
+                tcp_shutdown(ptr->sock_pasv);
+        if (ptr->txrx_pid > 0)
+                kill(ptr->txrx_pid, SIGKILL);
+        if (ptr->username)
+                free(ptr->username);
+        if (ptr->token)
+                free(ptr->token);
+        free(ptr);
+}
+
+static void stop_poll_fd(struct tcp_server *serv, int idx)
+{
+        serv->fds[idx].fd = -1;
+        serv->fds[idx].events = 0;
+        serv->fds[idx].revents = 0;
+}
+
+static int start_poll_fd(struct tcp_server *serv, int sockfd)
+{
+        int old_size, i;
+        for (i = 0; i < serv->nfds; i++) {
+                if (serv->fds[i].fd == -1) {
+                        serv->fds[i].fd = sockfd;
+                        serv->fds[i].events = POLLIN;
+                        return i;
+                }
+        }
+        old_size = serv->nfds;
+        serv->nfds = old_size ? old_size << 1 : 4;
+        serv->fds = realloc(serv->fds, serv->nfds * sizeof(*serv->fds));
+        for (i = old_size; i < serv->nfds; i++)
+                stop_poll_fd(serv, i);
+        serv->fds[old_size].fd = sockfd;
+        serv->fds[old_size].events = POLLIN;
+        return old_size;
+}
+
+static void register_sigactions(struct tcp_server *serv)
 {
         struct sigaction sa;
         sigset_t mask;
@@ -47,60 +111,27 @@ static void set_sigactions(sigset_t *orig_mask)
         sigaddset(&mask, SIGUSR1);
         sigaddset(&mask, SIGUSR2);
         sigaddset(&mask, SIGCHLD);
-        sigprocmask(SIG_BLOCK, &mask, orig_mask);
+        sigprocmask(SIG_BLOCK, &mask, &serv->mask);
 }
 
-static void create_session(struct session **sess, int fd, const char *addr)
-{
-        struct session *tmp = malloc(sizeof(*tmp));
-        tmp->socket_d = fd;
-        tmp->buf_used = 0;
-        strncpy(tmp->address, addr, sizeof(tmp->address));
-        tmp->username = 0;
-        tmp->token = 0;
-        tmp->curr_dir = get_current_dir_fd();
-        tmp->sock_pasv = -1;
-        tmp->port_actv = 0;
-        memset(tmp->ip_actv, 0, sizeof(tmp->ip_actv));
-        tmp->txrx_pid = 0;
-        tmp->state = st_login;
-        tmp->next = *sess;
-        *sess = tmp;
-        send_string(tmp, ftp_greet_message);
-}
-
-static void delete_session(struct session *sess)
-{
-        close(sess->curr_dir);
-        tcp_shutdown(sess->socket_d);
-        if (sess->sock_pasv != -1)
-                tcp_shutdown(sess->sock_pasv);
-        if (sess->txrx_pid > 0)
-                kill(sess->txrx_pid, SIGKILL);
-        if (sess->username)
-                free(sess->username);
-        if (sess->token)
-                free(sess->token);
-        free(sess);
-}
-
-static void delete_all_sessions(struct session *sess)
+static void delete_all_sessions(struct tcp_server *serv)
 {
         struct session *tmp;
-        while (sess) {
-                tmp = sess;
-                sess = sess->next;
+        while (serv->sess) {
+                tmp = serv->sess;
+                serv->sess = serv->sess->next;
                 delete_session(tmp);
         }
 }
 
-static void delete_finished_sessions(struct session **sess)
+static void delete_finished_sessions(struct tcp_server *serv)
 {
-        struct session *tmp;
+        struct session **sess = &serv->sess;
         while (*sess) {
                 if ((*sess)->state == st_goodbye) {
-                        tmp = *sess;
+                        struct session *tmp = *sess;
                         *sess = (*sess)->next;
+                        stop_poll_fd(serv, tmp->fds_idx);
                         delete_session(tmp);
                 } else {
                         sess = &(*sess)->next;
@@ -108,7 +139,7 @@ static void delete_finished_sessions(struct session **sess)
         }
 }
 
-static void remove_zombies(struct session *sess)
+static void remove_zombies(struct tcp_server *serv)
 {
         int pid, res;
         struct session *tmp;
@@ -119,7 +150,7 @@ static void remove_zombies(struct session *sess)
                         fprintf(stderr, "[%d] Transmission failed\n", pid);
                 else
                         fprintf(stderr, "[%d] Transmission success\n", pid);
-                for (tmp = sess; tmp; tmp = tmp->next) {
+                for (tmp = serv->sess; tmp; tmp = tmp->next) {
                         if (tmp->txrx_pid == pid) {
                                 tmp->txrx_pid = 0;
                                 break;
@@ -173,12 +204,16 @@ static void receive_data(struct tcp_server *serv, struct session *ptr)
 
 static void accept_connection(struct tcp_server *serv)
 {
-        int sockfd;
+        int idx, sockfd;
         char address[ADDRESS_LEN];
+        struct session *tmp;
         sockfd = tcp_accept(serv->listen_sock, address, sizeof(address));
         if (sockfd != -1) {
+                idx = start_poll_fd(serv, sockfd);
+                tmp = create_session(idx, sockfd, address);
+                tmp->next = serv->sess;
+                serv->sess = tmp;
                 fprintf(stderr, "connection from %s\n", address);
-                create_session(&serv->sess, sockfd, address);
         }
 }
 
@@ -188,14 +223,18 @@ static int handle_signal_event(struct tcp_server *serv)
         sig_event_flag = sigev_no_events;
         switch (event) {
         case sigev_terminate:
-                delete_all_sessions(serv->sess);
+                delete_all_sessions(serv);
+                free(serv->fds);
                 return 1;
         case sigev_restart:
-                delete_all_sessions(serv->sess);
-                serv->sess = NULL;
+                delete_all_sessions(serv);
+                free(serv->fds);
+                serv->fds = NULL;
+                serv->nfds = 0;
+                start_poll_fd(serv, serv->listen_sock);
                 return 0;
         case sigev_childexit:
-                remove_zombies(serv->sess);
+                remove_zombies(serv);
                 return 0;
         case sigev_no_events:
                 ;
@@ -206,22 +245,12 @@ static int handle_signal_event(struct tcp_server *serv)
 void tcp_server_handle(struct tcp_server *serv)
 {
         struct session *tmp;
-        int res, max_d;
-        fd_set readfds;
-        sigset_t mask;
-        set_sigactions(&mask);
+        register_sigactions(serv);
+        start_poll_fd(serv, serv->listen_sock);
         for (;;) {
-                FD_ZERO(&readfds);
-                FD_SET(serv->listen_sock, &readfds);
-                max_d = serv->listen_sock;
-                for (tmp = serv->sess; tmp; tmp = tmp->next) {
-                        FD_SET(tmp->socket_d, &readfds);
-                        if (tmp->socket_d > max_d)
-                                max_d = tmp->socket_d;
-                }
-                res = pselect(max_d + 1, &readfds, NULL, NULL, NULL, &mask);
+                int res = ppoll(serv->fds, serv->nfds, NULL, &serv->mask);
                 if (res == -1 && errno != EINTR) {
-                        perror("pselect");
+                        perror("ppoll");
                         break;
                 }
                 if (res == -1) {
@@ -230,13 +259,17 @@ void tcp_server_handle(struct tcp_server *serv)
                                 break;
                         continue;
                 }
-                if (FD_ISSET(serv->listen_sock, &readfds))
+                if (serv->fds[0].revents & POLLIN) {
                         accept_connection(serv);
-                for (tmp = serv->sess; tmp; tmp = tmp->next) {
-                        if (FD_ISSET(tmp->socket_d, &readfds))
-                                receive_data(serv, tmp);
+                        serv->fds[0].revents = 0;
                 }
-                delete_finished_sessions(&serv->sess);
+                for (tmp = serv->sess; tmp; tmp = tmp->next) {
+                        if (serv->fds[tmp->fds_idx].revents & POLLIN) {
+                                receive_data(serv, tmp);
+                                serv->fds[tmp->fds_idx].revents = 0;
+                        }
+                }
+                delete_finished_sessions(serv);
         }
 }
 
@@ -263,6 +296,9 @@ struct tcp_server *new_tcp_server(const char *ip, unsigned short port)
         serv->listen_sock = -1;
         serv->port = port;
         serv->ipaddr = strdup(ip);
+        sigfillset(&serv->mask);
+        serv->nfds = 0;
+        serv->fds = NULL;
         serv->sess = NULL;
         return serv;
 }

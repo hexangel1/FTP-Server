@@ -1,6 +1,8 @@
 #ifndef SERVER_H_SENTRY
 #define SERVER_H_SENTRY
 
+#include <signal.h>
+
 #define INBUFSIZE 1024
 #define OUTBUFSIZE 512
 #define ADDRESS_LEN 32
@@ -22,6 +24,7 @@ enum fsm_state {
 };
 
 struct session {
+        int fds_idx;
         int socket_d;
         int buf_used;
         char buf[INBUFSIZE];
@@ -42,6 +45,9 @@ struct tcp_server {
         int listen_sock;
         unsigned short port;
         char *ipaddr;
+        sigset_t mask;
+        int nfds;
+        struct pollfd *fds;
         struct session *sess;
 };
 
