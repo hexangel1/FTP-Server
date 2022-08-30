@@ -175,11 +175,11 @@ static void check_lf(struct session *ptr)
                         return;
                 str = malloc(pos + 1);
                 memcpy(str, ptr->buf, pos);
-                str[pos] = '\0';
+                str[pos] = 0;
                 ptr->buf_used -= pos + 1;
                 memmove(ptr->buf, ptr->buf + pos + 1, ptr->buf_used);
                 if (pos && str[pos - 1] == '\r')
-                        str[pos - 1] = '\0';
+                        str[pos - 1] = 0;
                 fprintf(stderr, "%s\n", str);
                 execute_cmd(ptr, str);
                 free(str);
