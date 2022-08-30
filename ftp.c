@@ -194,6 +194,28 @@ static int file_upload(const char *filename, int conn, struct session *ptr)
         return 0;
 }
 
+static int file_append(const char *filename, int conn, struct session *ptr)
+{
+        int fd, res;
+        fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (fd == -1) {
+                perror("open");
+                tcp_shutdown(conn);
+                send_string(ptr, "553 No such file or directory.\n");
+                return 1;
+        }
+        send_string(ptr, "125 Data connection opened, transfer starting.\n");
+        res = tcp_receive(conn, fd);
+        tcp_shutdown(conn);
+        close(fd);
+        if (res == -1) {
+                send_string(ptr, "451 File transmission failed.\n");
+                return 1;
+        }
+        send_string(ptr, "226 Closing data connetion. File send OK.\n");
+        return 0;
+}
+
 static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -206,6 +228,19 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
         } else {
                 send_string(ptr, "550 No transmission running.\n");
         }
+}
+
+static void ftp_appe(struct ftp_request *ftp_req, struct session *ptr)
+{
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Not logged in.\n");
+                return;
+        }
+        if (ptr->state == st_normal) {
+                send_string(ptr, "504 Please select mode with PASV or PORT\n");
+                return;
+        }
+        run_process(file_append, ftp_req->arg, ptr);
 }
 
 static void ftp_cdup(struct ftp_request *ftp_req, struct session *ptr)
@@ -542,7 +577,7 @@ static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
 void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
-                ftp_abor, ftp_fail, ftp_fail, ftp_cdup, ftp_cwd,
+                ftp_abor, ftp_fail, ftp_appe, ftp_cdup, ftp_cwd,
                 ftp_dele, ftp_fail, ftp_help, ftp_list, ftp_mdtm,
                 ftp_mkd,  ftp_nlst, ftp_noop, ftp_pass, ftp_pasv,
                 ftp_port, ftp_pwd,  ftp_quit, ftp_rein, ftp_retr,
