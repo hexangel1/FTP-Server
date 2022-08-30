@@ -9,6 +9,7 @@
 #include <sys/resource.h>
 #include "server.h"
 
+#ifdef DAEMONIZE_ME
 void daemonize(void)
 {
         int res, fd, fd_max = 1024;
@@ -31,6 +32,7 @@ void daemonize(void)
         openlog("ftpd", LOG_CONS, LOG_DAEMON);
         syslog(LOG_INFO, "Daemon started, pid = %d", getpid());
 }
+#endif
 
 int main(int argc, char **argv)
 {
@@ -40,7 +42,9 @@ int main(int argc, char **argv)
                 fputs("Usage: server [ip] [port]\n", stderr);
                 exit(1);
         }
-/*      daemonize();      */
+#ifdef DAEMONIZE_ME
+        daemonize();
+#endif
         serv = new_tcp_server(argv[1], atoi(argv[2]));
         res = tcp_server_up(serv);
         if (res == -1) {
