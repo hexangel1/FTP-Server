@@ -18,12 +18,12 @@ static volatile sig_atomic_t sig_event_flag = sigev_no_events;
 
 static void signal_handler(int signum)
 {
-        if (signum == SIGINT || signum == SIGUSR1)
-                sig_event_flag = sigev_terminate;
-        else if (signum == SIGUSR2)
-                sig_event_flag = sigev_restart;
-        else if (signum == SIGCHLD)
+        if (signum == SIGCHLD)
                 sig_event_flag = sigev_childexit;
+        else if (signum == SIGUSR1 || signum == SIGHUP)
+                sig_event_flag = sigev_restart;
+        else if (signum == SIGUSR2 || signum == SIGTERM)
+                sig_event_flag = sigev_terminate;
 }
 
 static void set_sigactions(sigset_t *orig_mask)
@@ -35,13 +35,15 @@ static void set_sigactions(sigset_t *orig_mask)
         sa.sa_flags = 0;
         sigaction(SIGPIPE, &sa, NULL);
         sa.sa_handler = signal_handler;
-        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGHUP, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
         sigaction(SIGUSR1, &sa, NULL);
         sigaction(SIGUSR2, &sa, NULL);
         sa.sa_flags = SA_NOCLDSTOP;
         sigaction(SIGCHLD, &sa, NULL);
         sigemptyset(&mask);
-        sigaddset(&mask, SIGINT);
+        sigaddset(&mask, SIGHUP);
+        sigaddset(&mask, SIGTERM);
         sigaddset(&mask, SIGUSR1);
         sigaddset(&mask, SIGUSR2);
         sigaddset(&mask, SIGCHLD);
