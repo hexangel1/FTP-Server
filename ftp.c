@@ -230,6 +230,11 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
+static void ftp_allo(struct ftp_request *ftp_req, struct session *ptr)
+{
+        send_string(ptr, "200 Success.\n");
+}
+
 static void ftp_appe(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -577,7 +582,7 @@ static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
 void execute_cmd(struct session *ptr, const char *cmdstring)
 {
         static const ftp_handler handlers[] = {
-                ftp_abor, ftp_fail, ftp_appe, ftp_cdup, ftp_cwd,
+                ftp_abor, ftp_allo, ftp_appe, ftp_cdup, ftp_cwd,
                 ftp_dele, ftp_fail, ftp_help, ftp_list, ftp_mdtm,
                 ftp_mkd,  ftp_nlst, ftp_noop, ftp_pass, ftp_pasv,
                 ftp_port, ftp_pwd,  ftp_quit, ftp_rein, ftp_retr,
