@@ -148,7 +148,7 @@ int rename_file(const char *oldpath, const char *newpath, int dir_fd)
         return renameat(dir_fd, oldpath, dir_fd, newpath);
 }
 
-int get_current_dir_fd()
+int get_current_dir_fd(void)
 {
         return open(".", O_RDONLY | O_DIRECTORY);
 }

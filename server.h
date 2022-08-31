@@ -9,9 +9,9 @@
 
 enum signal_event {
         sigev_no_events,
-        sigev_terminate,
+        sigev_childexit,
         sigev_restart,
-        sigev_childexit
+        sigev_terminate
 };
 
 enum fsm_state {
@@ -45,7 +45,7 @@ struct tcp_server {
         int listen_sock;
         unsigned short port;
         char *ipaddr;
-        sigset_t mask;
+        sigset_t sigmask;
         int nfds;
         struct pollfd *fds;
         struct session *sess;

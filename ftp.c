@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <time.h>
 #include "ftp.h"
 #include "tcp.h"
@@ -49,9 +50,17 @@ static int check_username(const char *username)
 
 static void parse_command(struct ftp_request *ftp_req, const char *cmdstring)
 {
-        ftp_req->cmd[0] = 0;
-        ftp_req->arg[0] = 0;
-        sscanf(cmdstring, "%7s %s", ftp_req->cmd, ftp_req->arg);
+        int i;
+        for (i = 0; *cmdstring && !isspace(*cmdstring) && i < MAXCMDLEN; i++) {
+                ftp_req->cmd[i] = *cmdstring;
+                cmdstring++;
+        }
+        ftp_req->cmd[i] = 0;
+        for (cmdstring++; *cmdstring && isspace(*cmdstring); cmdstring++)
+                ;
+        for (i = 0; *cmdstring && i < MAXARGLEN; cmdstring++, i++)
+                ftp_req->arg[i] = *cmdstring;
+        ftp_req->arg[i] = 0;
         ftp_req->cmd_idx = search_command(ftp_req->cmd);
 }
 

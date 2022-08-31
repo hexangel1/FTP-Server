@@ -29,7 +29,7 @@ int remove_file(const char *path, int dir_fd);
 int rename_file(const char *oldpath, const char *newpath, int dir_fd);
 
 /* returns fd associated with current directory */
-int get_current_dir_fd();
+int get_current_dir_fd(void);
 
 #endif /* FS_H_SENTRY */
 

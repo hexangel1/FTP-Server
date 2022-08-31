@@ -3,13 +3,15 @@
 
 #define MIN_PORT_NUM 49152
 #define MAX_PORT_NUM 65535
+#define MAXCMDLEN 7
+#define MAXARGLEN 1023
 
 struct session;
 
 struct ftp_request {
         int cmd_idx;
-        char cmd[8];
-        char arg[1024];
+        char cmd[MAXCMDLEN + 1];
+        char arg[MAXARGLEN + 1];
 };
 
 typedef int  (*ftp_routine) (const char *, int, struct session *);

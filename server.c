@@ -111,7 +111,7 @@ static void register_sigactions(struct tcp_server *serv)
         sigaddset(&mask, SIGUSR1);
         sigaddset(&mask, SIGUSR2);
         sigaddset(&mask, SIGCHLD);
-        sigprocmask(SIG_BLOCK, &mask, &serv->mask);
+        sigprocmask(SIG_BLOCK, &mask, &serv->sigmask);
 }
 
 static void delete_all_sessions(struct tcp_server *serv)
@@ -222,10 +222,9 @@ static int handle_signal_event(struct tcp_server *serv)
         enum signal_event event = sig_event_flag;
         sig_event_flag = sigev_no_events;
         switch (event) {
-        case sigev_terminate:
-                delete_all_sessions(serv);
-                free(serv->fds);
-                return 1;
+        case sigev_childexit:
+                remove_zombies(serv);
+                return 0;
         case sigev_restart:
                 delete_all_sessions(serv);
                 free(serv->fds);
@@ -233,9 +232,10 @@ static int handle_signal_event(struct tcp_server *serv)
                 serv->nfds = 0;
                 start_poll_fd(serv, serv->listen_sock);
                 return 0;
-        case sigev_childexit:
-                remove_zombies(serv);
-                return 0;
+        case sigev_terminate:
+                delete_all_sessions(serv);
+                free(serv->fds);
+                return 1;
         case sigev_no_events:
                 ;
         }
@@ -248,7 +248,7 @@ void tcp_server_handle(struct tcp_server *serv)
         register_sigactions(serv);
         start_poll_fd(serv, serv->listen_sock);
         for (;;) {
-                int res = ppoll(serv->fds, serv->nfds, NULL, &serv->mask);
+                int res = ppoll(serv->fds, serv->nfds, NULL, &serv->sigmask);
                 if (res == -1 && errno != EINTR) {
                         perror("ppoll");
                         break;
@@ -296,7 +296,7 @@ struct tcp_server *new_tcp_server(const char *ip, unsigned short port)
         serv->listen_sock = -1;
         serv->port = port;
         serv->ipaddr = strdup(ip);
-        sigfillset(&serv->mask);
+        sigfillset(&serv->sigmask);
         serv->nfds = 0;
         serv->fds = NULL;
         serv->sess = NULL;
