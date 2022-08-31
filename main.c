@@ -9,8 +9,8 @@
 #include <sys/resource.h>
 #include "server.h"
 
-#ifdef DAEMONIZE_ME
-void daemonize(void)
+#ifdef BUILD_DAEMON
+static void daemonize(void)
 {
         int res, fd, fd_max = 1024;
         struct rlimit rl;
@@ -29,10 +29,21 @@ void daemonize(void)
         setsid();
         if (fork() > 0)
                 exit(0);
-        openlog("ftpd", LOG_CONS, LOG_DAEMON);
-        syslog(LOG_INFO, "Daemon started, pid = %d", getpid());
+        openlog("ftpservd", LOG_CONS | LOG_PID, LOG_DAEMON);
+        syslog(LOG_INFO, "Daemon started, pid == %d", getpid());
 }
 #endif
+
+static void goodbye_message(const char *message)
+{
+#ifdef BUILD_DAEMON
+        syslog(LOG_INFO, "%s", message);
+        closelog();
+#else
+        fputs(message, stderr);
+        fputc('\n', stderr);
+#endif
+}
 
 int main(int argc, char **argv)
 {
@@ -42,18 +53,19 @@ int main(int argc, char **argv)
                 fputs("Usage: server [ip] [port]\n", stderr);
                 exit(1);
         }
-#ifdef DAEMONIZE_ME
+#ifdef BUILD_DAEMON
         daemonize();
 #endif
         serv = new_tcp_server(argv[1], atoi(argv[2]));
         res = tcp_server_up(serv);
         if (res == -1) {
-                fputs("Failed to bring server up\n", stderr);
+                goodbye_message("Failed to bring server up");
                 exit(1);
         }
         fputs("running...\n", stderr);
         tcp_server_handle(serv);
         tcp_server_down(serv);
+        goodbye_message("Gracefully stopped");
         return 0;
 }
 

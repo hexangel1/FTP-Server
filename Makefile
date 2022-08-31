@@ -1,10 +1,10 @@
-PROJECT = ftpd
+PROJECT = ftpservd
 SOURCES = $(wildcard *.c)
 HEADERS = $(filter-out main.h, $(SOURCES:.c=.h))
 OBJECTS = $(SOURCES:.c=.o)
 SPECIAL = Makefile README.md LICENSE
 CSOURCE = -D _XOPEN_SOURCE=500 -D _POSIX_C_SOURCE=200809L
-CDEFINE = -D FOR_LINUX
+CDEFINE = -D BUILD_FOR_LINUX #-D BUILD_DAEMON
 CFLAGS = -Wall -g -ansi -pedantic $(CSOURCE) $(CDEFINE)
 CC = gcc
 CTAGS = ctags

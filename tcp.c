@@ -1,4 +1,4 @@
-#ifdef FOR_LINUX
+#ifdef BUILD_FOR_LINUX
 #define _GNU_SOURCE
 #include <fcntl.h>
 #include <unistd.h>
@@ -121,7 +121,7 @@ ssize_t tcp_recv(int sockfd, char *buf, size_t len)
         return recv(sockfd, buf, len, 0);
 }
 
-#ifdef FOR_LINUX
+#ifdef BUILD_FOR_LINUX
 int tcp_transmit(int sockfd, int fd)
 {
         struct stat st_buf;
