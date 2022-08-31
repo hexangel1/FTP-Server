@@ -49,13 +49,13 @@ int main(int argc, char **argv)
 {
         int res;
         struct tcp_server *serv;
-        if (argc != 3) {
-                fputs("Usage: server [ip] [port]\n", stderr);
-                exit(1);
-        }
 #ifdef BUILD_DAEMON
         daemonize();
 #endif
+        if (argc != 3) {
+                goodbye_message("Usage: server [ip] [port]");
+                exit(1);
+        }
         serv = new_tcp_server(argv[1], atoi(argv[2]));
         res = tcp_server_up(serv);
         if (res == -1) {

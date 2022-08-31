@@ -143,21 +143,17 @@ int tcp_transmit(int sockfd, int fd)
 int tcp_receive(int sockfd, int fd)
 {
         ssize_t rc;
-        int chan_fd[2];
-        int res, buff_size;
-        buff_size = getpagesize();
-        res = pipe(chan_fd);
+        int fds[2], buf_size, res;
+        buf_size = getpagesize();
+        res = pipe(fds);
         if (res == -1) {
                 perror("pipe");
                 return -1;
         }
-        while ((rc = splice(sockfd, NULL, chan_fd[1], NULL, buff_size,
-                      SPLICE_F_MORE | SPLICE_F_MOVE)) > 0) {
-                splice(chan_fd[0], NULL, fd, NULL, buff_size,
-                       SPLICE_F_MORE | SPLICE_F_MOVE);
-        }
-        close(chan_fd[0]);
-        close(chan_fd[1]);
+        while ((rc = splice(sockfd, 0, fds[1], 0, buf_size, SPLICE_F_MOVE)) > 0)
+                splice(fds[0], 0, fd, 0, buf_size, SPLICE_F_MOVE);
+        close(fds[0]);
+        close(fds[1]);
         if (rc != 0) {
                 perror("splice");
                 return -1;
