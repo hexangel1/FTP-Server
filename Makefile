@@ -8,16 +8,18 @@ CDEFINE = -D BUILD_FOR_LINUX #-D BUILD_DAEMON
 CFLAGS = -Wall -g -ansi -pedantic $(CSOURCE) $(CDEFINE)
 CC = gcc
 CTAGS = ctags
+INSTALL = install
+PREFIX = /usr/local
 ARGV = 127.0.0.1 2000
 
 $(PROJECT): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $(OBJECTS)
 
-%.o: %.c %.h
-	$(CC) $(CFLAGS) -c -o $@ $<
-
 $(PROJECT).tar: $(SOURCES) $(HEADERS) $(SPECIAL)
 	tar -cf $@ $(SOURCES) $(HEADERS) $(SPECIAL)
+
+%.o: %.c %.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 deps.mk: $(SOURCES) Makefile
 	$(CC) -MM $(SOURCES) > $@
@@ -25,14 +27,14 @@ deps.mk: $(SOURCES) Makefile
 run: $(PROJECT)
 	./$(PROJECT) $(ARGV)
 
-stop:
-	pkill -SIGTERM $(PROJECT)
-
 memcheck: $(PROJECT)
 	valgrind -s --leak-check=full ./$(PROJECT) $(ARGV)
 
 systrace: $(PROJECT)
 	strace -f ./$(PROJECT) $(ARGV)
+
+stop:
+	pkill -SIGTERM $(PROJECT)
 
 tags: $(SOURCES) $(HEADERS)
 	$(CTAGS) $(SOURCES) $(HEADERS)
@@ -42,11 +44,19 @@ tar: $(PROJECT).tar
 clean:
 	rm -f $(PROJECT) *.o *.a *.bin deps.mk tags
 
+install: $(PROJECT)
+	$(INSTALL) $(PROJECT) $(PREFIX)/bin
+
+uninstall:
+	rm -f $(PREFIX)/bin/$(PROJECT)
+
+ifneq (unistall, $(MAKECMDGOALS))
 ifneq (clean, $(MAKECMDGOALS))
 ifneq (stop, $(MAKECMDGOALS))
 ifneq (tags, $(MAKECMDGOALS))
 ifneq (tar, $(MAKECMDGOALS))
 -include deps.mk
+endif
 endif
 endif
 endif
