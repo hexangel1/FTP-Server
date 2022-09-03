@@ -259,34 +259,30 @@ static void ftp_appe(struct ftp_request *ftp_req, struct session *ptr)
 
 static void ftp_cdup(struct ftp_request *ftp_req, struct session *ptr)
 {
-        int dir_fd;
+        int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
                 return;
         }
-        dir_fd = change_directory("..", ptr->curr_dir);
-        if (dir_fd != -1) {
-                ptr->curr_dir = dir_fd;
-                send_string(ptr, "250 Directory successfully changed.\n");
-        } else {
+        res = change_directory("..", ptr->curr_dir);
+        if (res == -1)
                 send_string(ptr, "550 Failed to change directory.\n");
-        }
+        else
+                send_string(ptr, "250 Directory successfully changed.\n");
 }
 
 static void ftp_cwd(struct ftp_request *ftp_req, struct session *ptr)
 {
-        int dir_fd;
+        int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
                 return;
         }
-        dir_fd = change_directory(ftp_req->arg, ptr->curr_dir);
-        if (dir_fd != -1) {
-                ptr->curr_dir = dir_fd;
-                send_string(ptr, "250 Directory successfully changed.\n");
-        } else {
+        res = change_directory(ftp_req->arg, ptr->curr_dir);
+        if (res == -1)
                 send_string(ptr, "550 Failed to change directory.\n");
-        }
+        else
+                send_string(ptr, "250 Directory successfully changed.\n");
 }
 
 static void ftp_dele(struct ftp_request *ftp_req, struct session *ptr)

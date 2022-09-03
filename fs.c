@@ -87,13 +87,19 @@ int str_modify_time(char *buf, int len, const char *name, int dir_fd)
 
 int change_directory(const char *path, int dir_fd)
 {
-        int new_dir = openat(dir_fd, path, O_RDONLY | O_DIRECTORY);
+        int res, new_dir;
+        new_dir = openat(dir_fd, path, O_RDONLY | O_DIRECTORY);
         if (new_dir == -1) {
                 perror("openat");
                 return -1;
         }
-        close(dir_fd);
-        return new_dir;
+        res = dup2(new_dir, dir_fd);
+        if (res == -1) {
+                perror("dup2");
+                return -1;
+        }
+        close(new_dir);
+        return 0;
 }
 
 int get_directory_path(char *buf, int size, int dir_fd)
