@@ -29,6 +29,30 @@ static void signal_handler(int signum)
                 sig_event_flag = sigev_terminate;
 }
 
+static void register_sigactions(sigset_t *origmask)
+{
+        struct sigaction sa;
+        sigset_t mask;
+        sa.sa_handler = SIG_IGN;
+        sigfillset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGPIPE, &sa, NULL);
+        sa.sa_handler = signal_handler;
+        sigaction(SIGHUP, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+        sigaction(SIGUSR1, &sa, NULL);
+        sigaction(SIGUSR2, &sa, NULL);
+        sa.sa_flags = SA_NOCLDSTOP;
+        sigaction(SIGCHLD, &sa, NULL);
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGHUP);
+        sigaddset(&mask, SIGTERM);
+        sigaddset(&mask, SIGUSR1);
+        sigaddset(&mask, SIGUSR2);
+        sigaddset(&mask, SIGCHLD);
+        sigprocmask(SIG_BLOCK, &mask, origmask);
+}
+
 static struct session *create_session(int idx, int fd, const char *addr)
 {
         struct session *ptr = malloc(sizeof(*ptr));
@@ -63,6 +87,16 @@ static void delete_session(struct session *ptr)
         free(ptr);
 }
 
+static void delete_all_sessions(struct session *sess)
+{
+        struct session *tmp;
+        while (sess) {
+                tmp = sess;
+                sess = sess->next;
+                delete_session(tmp);
+        }
+}
+
 static void stop_poll_fd(struct tcp_server *serv, int idx)
 {
         serv->fds[idx].fd = -1;
@@ -90,40 +124,6 @@ static int start_poll_fd(struct tcp_server *serv, int sockfd)
         return old_size;
 }
 
-static void register_sigactions(struct tcp_server *serv)
-{
-        struct sigaction sa;
-        sigset_t mask;
-        sa.sa_handler = SIG_IGN;
-        sigfillset(&sa.sa_mask);
-        sa.sa_flags = 0;
-        sigaction(SIGPIPE, &sa, NULL);
-        sa.sa_handler = signal_handler;
-        sigaction(SIGHUP, &sa, NULL);
-        sigaction(SIGTERM, &sa, NULL);
-        sigaction(SIGUSR1, &sa, NULL);
-        sigaction(SIGUSR2, &sa, NULL);
-        sa.sa_flags = SA_NOCLDSTOP;
-        sigaction(SIGCHLD, &sa, NULL);
-        sigemptyset(&mask);
-        sigaddset(&mask, SIGHUP);
-        sigaddset(&mask, SIGTERM);
-        sigaddset(&mask, SIGUSR1);
-        sigaddset(&mask, SIGUSR2);
-        sigaddset(&mask, SIGCHLD);
-        sigprocmask(SIG_BLOCK, &mask, &serv->sigmask);
-}
-
-static void delete_all_sessions(struct tcp_server *serv)
-{
-        struct session *tmp;
-        while (serv->sess) {
-                tmp = serv->sess;
-                serv->sess = serv->sess->next;
-                delete_session(tmp);
-        }
-}
-
 static void delete_finished_sessions(struct tcp_server *serv)
 {
         struct session **sess = &serv->sess;
@@ -137,6 +137,16 @@ static void delete_finished_sessions(struct tcp_server *serv)
                         sess = &(*sess)->next;
                 }
         }
+}
+
+static void restart_server(struct tcp_server *serv)
+{
+        delete_all_sessions(serv->sess);
+        free(serv->fds);
+        serv->nfds = 0;
+        serv->fds = NULL;
+        serv->sess = NULL;
+        start_poll_fd(serv, serv->listen_sock);
 }
 
 static void remove_zombies(struct tcp_server *serv)
@@ -226,15 +236,9 @@ static int handle_signal_event(struct tcp_server *serv)
                 remove_zombies(serv);
                 return 0;
         case sigev_restart:
-                delete_all_sessions(serv);
-                free(serv->fds);
-                serv->fds = NULL;
-                serv->nfds = 0;
-                start_poll_fd(serv, serv->listen_sock);
+                restart_server(serv);
                 return 0;
         case sigev_terminate:
-                delete_all_sessions(serv);
-                free(serv->fds);
                 return 1;
         case sigev_no_events:
                 ;
@@ -245,7 +249,6 @@ static int handle_signal_event(struct tcp_server *serv)
 void tcp_server_handle(struct tcp_server *serv)
 {
         struct session *tmp;
-        register_sigactions(serv);
         start_poll_fd(serv, serv->listen_sock);
         for (;;) {
                 int res = ppoll(serv->fds, serv->nfds, NULL, &serv->sigmask);
@@ -275,17 +278,20 @@ void tcp_server_handle(struct tcp_server *serv)
 
 int tcp_server_up(struct tcp_server *serv)
 {
-        srand(time(NULL));
         serv->listen_sock = tcp_create_socket(serv->ipaddr, serv->port);
         if (serv->listen_sock == -1)
                 return -1;
+        register_sigactions(&serv->sigmask);
+        srand(time(NULL));
         return 0;
 }
 
 void tcp_server_down(struct tcp_server *serv)
 {
-        if (serv->listen_sock != -1)
-                tcp_shutdown(serv->listen_sock);
+        tcp_shutdown(serv->listen_sock);
+        delete_all_sessions(serv->sess);
+        if (serv->fds)
+                free(serv->fds);
         free(serv->ipaddr);
         free(serv);
 }
