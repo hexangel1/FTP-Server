@@ -58,17 +58,16 @@ static struct session *create_session(int idx, int fd, const char *addr)
         struct session *ptr = malloc(sizeof(*ptr));
         ptr->fds_idx = idx;
         ptr->socket_d = fd;
+        ptr->curr_dir = get_current_dir_fd();
+        ptr->txrx_pid = 0;
         ptr->buf_used = 0;
         strncpy(ptr->address, addr, sizeof(ptr->address));
-        ptr->username = 0;
-        ptr->token = 0;
-        ptr->curr_dir = get_current_dir_fd();
-        ptr->sock_pasv = -1;
-        ptr->port_actv = 0;
         memset(ptr->ip_actv, 0, sizeof(ptr->ip_actv));
-        ptr->txrx_pid = 0;
+        ptr->port_actv = 0;
+        ptr->sock_pasv = -1;
+        ptr->username = NULL;
+        ptr->token = NULL;
         ptr->state = st_login;
-        send_string(ptr, ftp_greet_message);
         return ptr;
 }
 
@@ -223,6 +222,7 @@ static void accept_connection(struct tcp_server *serv)
                 tmp = create_session(idx, sockfd, address);
                 tmp->next = serv->sess;
                 serv->sess = tmp;
+                send_string(tmp, ftp_greet_message);
                 fprintf(stderr, "connection from %s\n", address);
         }
 }

@@ -26,17 +26,17 @@ enum fsm_state {
 struct session {
         int fds_idx;
         int socket_d;
+        int curr_dir;
+        int txrx_pid;
         int buf_used;
         char buf[INBUFSIZE];
         char sendbuf[OUTBUFSIZE];
         char address[ADDRESS_LEN];
+        char ip_actv[32];
+        int port_actv;
+        int sock_pasv;
         char *username;
         char *token;
-        int curr_dir;
-        int sock_pasv;
-        int port_actv;
-        char ip_actv[32];
-        int txrx_pid;
         enum fsm_state state;
         struct session *next;
 };
