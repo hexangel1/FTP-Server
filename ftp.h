@@ -6,13 +6,13 @@
 #define MAXCMDLEN 7
 #define MAXARGLEN 1023
 
-struct session;
-
 struct ftp_request {
         int cmd_idx;
         char cmd[MAXCMDLEN + 1];
         char arg[MAXARGLEN + 1];
 };
+
+struct session;
 
 typedef int  (*ftp_routine) (const char *, int, struct session *);
 typedef void (*ftp_handler) (struct ftp_request *, struct session *);

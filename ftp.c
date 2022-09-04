@@ -451,14 +451,21 @@ static void ftp_quit(struct ftp_request *ftp_req, struct session *ptr)
 
 static void ftp_rein(struct ftp_request *ftp_req, struct session *ptr)
 {
-        transfer_mode_reset(ptr);
-        free(ptr->username);
-        ptr->username = 0;
-        set_token(ptr, NULL);
-        close(ptr->curr_dir);
-        ptr->curr_dir = get_current_dir_fd();
+        int dir_fd;
         if (ptr->txrx_pid > 0)
                 kill(ptr->txrx_pid, SIGKILL);
+        if (ptr->sock_pasv != -1) {
+                tcp_shutdown(ptr->sock_pasv);
+                ptr->sock_pasv = -1;
+        }
+        if (ptr->username) {
+                free(ptr->username);
+                ptr->username = NULL;
+        }
+        set_token(ptr, NULL);
+        dir_fd = get_current_dir_fd();
+        dup2(dir_fd, ptr->curr_dir);
+        close(dir_fd);
         ptr->state = st_login;
         send_string(ptr, "220 Session restarted.\n");
 }

@@ -100,14 +100,14 @@ int tcp_accept(int ls, char *address, int len)
                 return -1;
         }
         if (address)
-                snprintf(address, len, "%s:%u",
+                snprintf(address, len, "%s:%d",
                          get_ip_address(&addr), get_port(&addr));
         return sockfd;
 }
 
 void tcp_shutdown(int sockfd)
 {
-        shutdown(sockfd, 2);
+        shutdown(sockfd, SHUT_RDWR);
         close(sockfd);
 }
 

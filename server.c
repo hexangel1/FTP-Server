@@ -151,14 +151,16 @@ static void restart_server(struct tcp_server *serv)
 static void remove_zombies(struct tcp_server *serv)
 {
         int pid, res;
+        const char *message;
         struct session *tmp;
         while ((pid = waitpid(-1, &res, WNOHANG)) > 0) {
                 if (!WIFEXITED(res) && !WIFSIGNALED(res))
                         continue;
                 if ((WIFEXITED(res) && WEXITSTATUS(res)) || WIFSIGNALED(res))
-                        fprintf(stderr, "[%d] Transmission failed\n", pid);
+                        message = "Transmission failed";
                 else
-                        fprintf(stderr, "[%d] Transmission success\n", pid);
+                        message = "Transmission succeeded";
+                fprintf(stderr, "[%d]: %s\n", pid, message);
                 for (tmp = serv->sess; tmp; tmp = tmp->next) {
                         if (tmp->txrx_pid == pid) {
                                 tmp->txrx_pid = 0;
@@ -214,17 +216,19 @@ static void receive_data(struct tcp_server *serv, struct session *ptr)
 static void accept_connection(struct tcp_server *serv)
 {
         int idx, sockfd;
-        char address[ADDRESS_LEN];
         struct session *tmp;
+        char address[ADDRESS_LEN];
         sockfd = tcp_accept(serv->listen_sock, address, sizeof(address));
-        if (sockfd != -1) {
-                idx = start_poll_fd(serv, sockfd);
-                tmp = create_session(idx, sockfd, address);
-                tmp->next = serv->sess;
-                serv->sess = tmp;
-                send_string(tmp, ftp_greet_message);
-                fprintf(stderr, "connection from %s\n", address);
+        if (sockfd == -1) {
+                fprintf(stderr, "connection failed\n");
+                return;
         }
+        idx = start_poll_fd(serv, sockfd);
+        tmp = create_session(idx, sockfd, address);
+        tmp->next = serv->sess;
+        serv->sess = tmp;
+        send_string(tmp, ftp_greet_message);
+        fprintf(stderr, "connection from %s\n", address);
 }
 
 static int handle_signal_event(struct tcp_server *serv)
