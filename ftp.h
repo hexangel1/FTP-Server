@@ -6,6 +6,9 @@
 #define MAXCMDLEN 7
 #define MAXARGLEN 1023
 
+#define FTP_COMMAND_HANDLER(cmd) \
+        void ftp_ ## cmd(struct ftp_request *ftp_req, struct session *ptr)
+
 struct ftp_request {
         int cmd_idx;
         char cmd[MAXCMDLEN + 1];

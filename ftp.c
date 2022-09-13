@@ -224,7 +224,8 @@ static int file_append(const char *filename, int conn, struct session *ptr)
         send_string(ptr, "226 Closing data connetion. File send OK.\n");
         return 0;
 }
-static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
+
+static FTP_COMMAND_HANDLER(abor)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -237,12 +238,13 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "550 No transmission running.\n");
         }
 }
-static void ftp_allo(struct ftp_request *ftp_req, struct session *ptr)
+
+static FTP_COMMAND_HANDLER(allo)
 {
         send_string(ptr, "200 Success.\n");
 }
 
-static void ftp_appe(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(appe)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -255,7 +257,7 @@ static void ftp_appe(struct ftp_request *ftp_req, struct session *ptr)
         run_process(file_append, ftp_req->arg, ptr);
 }
 
-static void ftp_cdup(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(cdup)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -269,7 +271,7 @@ static void ftp_cdup(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "250 Directory successfully changed.\n");
 }
 
-static void ftp_cwd(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(cwd)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -283,7 +285,7 @@ static void ftp_cwd(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "250 Directory successfully changed.\n");
 }
 
-static void ftp_dele(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(dele)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -299,7 +301,7 @@ static void ftp_dele(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_help(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(help)
 {
         int cmd_table_size = sizeof(cmd_table) / sizeof(*cmd_table);
         int i, used = 4;
@@ -313,7 +315,7 @@ static void ftp_help(struct ftp_request *ftp_req, struct session *ptr)
         send_buffer(ptr);
 }
 
-static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(list)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -326,7 +328,7 @@ static void ftp_list(struct ftp_request *ftp_req, struct session *ptr)
         run_process(list_directory, *ftp_req->arg ? ftp_req->arg : ".", ptr);
 }
 
-static void ftp_mdtm(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(mdtm)
 {
         char buf[128];
         int res = str_modify_time(buf, 128, ftp_req->arg, ptr->curr_dir);
@@ -338,7 +340,7 @@ static void ftp_mdtm(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_mkd(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(mkd)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -355,7 +357,7 @@ static void ftp_mkd(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(nlst)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -368,12 +370,12 @@ static void ftp_nlst(struct ftp_request *ftp_req, struct session *ptr)
         run_process(nlst_directory, *ftp_req->arg ? ftp_req->arg : ".", ptr);
 }
 
-static void ftp_noop(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(noop)
 {
         send_string(ptr, "200 Success.\n");
 }
 
-static void ftp_pass(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(pass)
 {
         if (ptr->state == st_passwd) {
                 ptr->state = st_normal;
@@ -383,7 +385,7 @@ static void ftp_pass(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(pasv)
 {
         int ip[4];
         const char *host;
@@ -405,7 +407,7 @@ static void ftp_pasv(struct ftp_request *ftp_req, struct session *ptr)
         ptr->state = st_passive;
 }
 
-static void ftp_port(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(port)
 {
         int ip[4], port[2];
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -424,7 +426,7 @@ static void ftp_port(struct ftp_request *ftp_req, struct session *ptr)
         ptr->state = st_active;
 }
 
-static void ftp_pwd(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(pwd)
 {
         int res;
         char path[256];
@@ -441,13 +443,13 @@ static void ftp_pwd(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_quit(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(quit)
 {
         send_string(ptr, "221 Service closing control connection.\n");
         ptr->state = st_goodbye;
 }
 
-static void ftp_rein(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(rein)
 {
         int dir_fd;
         if (ptr->txrx_pid > 0)
@@ -468,7 +470,7 @@ static void ftp_rein(struct ftp_request *ftp_req, struct session *ptr)
         send_string(ptr, "220 Session restarted.\n");
 }
 
-static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(retr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -481,7 +483,7 @@ static void ftp_retr(struct ftp_request *ftp_req, struct session *ptr)
         run_process(file_download, ftp_req->arg, ptr);
 }
 
-static void ftp_rmd(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(rmd)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -497,7 +499,7 @@ static void ftp_rmd(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_rnfr(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(rnfr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -507,7 +509,7 @@ static void ftp_rnfr(struct ftp_request *ftp_req, struct session *ptr)
         set_token(ptr, ftp_req->arg);
 }
 
-static void ftp_rnto(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(rnto)
 {
         int res;
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -524,7 +526,7 @@ static void ftp_rnto(struct ftp_request *ftp_req, struct session *ptr)
         set_token(ptr, NULL);
 }
 
-static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(size)
 {
         long size;
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -540,7 +542,7 @@ static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_stat(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(stat)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -574,7 +576,7 @@ static void ftp_stat(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(stor)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
                 send_string(ptr, "530 Not logged in.\n");
@@ -587,12 +589,12 @@ static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
         run_process(file_upload, ftp_req->arg, ptr);
 }
 
-static void ftp_syst(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(syst)
 {
         send_string(ptr, "200 UNIX\n");
 }
 
-static void ftp_type(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(type)
 {
         if (ptr->state != st_login && ptr->state != st_passwd) {
                 if (ftp_req->arg[0] == 'I')
@@ -607,7 +609,7 @@ static void ftp_type(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_user(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(user)
 {
         if (check_username(ftp_req->arg)) {
                 ptr->username = strdup(ftp_req->arg);
@@ -618,7 +620,7 @@ static void ftp_user(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
-static void ftp_fail(struct ftp_request *ftp_req, struct session *ptr)
+static FTP_COMMAND_HANDLER(fail)
 {
         send_string(ptr, "502 Not implemented.\n");
 }
