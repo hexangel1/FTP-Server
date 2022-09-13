@@ -224,7 +224,6 @@ static int file_append(const char *filename, int conn, struct session *ptr)
         send_string(ptr, "226 Closing data connetion. File send OK.\n");
         return 0;
 }
-
 static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -238,7 +237,6 @@ static void ftp_abor(struct ftp_request *ftp_req, struct session *ptr)
                 send_string(ptr, "550 No transmission running.\n");
         }
 }
-
 static void ftp_allo(struct ftp_request *ftp_req, struct session *ptr)
 {
         send_string(ptr, "200 Success.\n");
@@ -542,6 +540,40 @@ static void ftp_size(struct ftp_request *ftp_req, struct session *ptr)
         }
 }
 
+static void ftp_stat(struct ftp_request *ftp_req, struct session *ptr)
+{
+        if (ptr->state == st_login || ptr->state == st_passwd) {
+                send_string(ptr, "530 Not logged in.\n");
+                return;
+        }
+        if (*ftp_req->arg) {
+                int res, dir_fd;
+                DIR *dirp;
+                struct dirent *dent;
+                dir_fd = open_directory(ftp_req->arg, ptr->curr_dir);
+                if (dir_fd == -1) {
+                        send_string(ptr, "550 Failed to open directory.\n");
+                        return;
+                }
+                dirp = fdopendir(dir_fd);
+                send_string(ptr, "212 Here comes the directory listing.\n");
+                while ((dent = readdir(dirp))) {
+                        res = str_file_info(ptr->sendbuf, sizeof(ptr->sendbuf),
+                                            dent->d_name, dir_fd);
+                        if (res != -1)
+                                send_buffer(ptr);
+                }
+                send_string(ptr, "226 Closing data connetion.\n");
+                closedir(dirp);
+        } else {
+                if (ptr->txrx_pid) {
+                        send_string(ptr, "200 Data connection established.\n");
+                } else {
+                        send_string(ptr, "200 Ok.\n");
+                }
+        }
+}
+
 static void ftp_stor(struct ftp_request *ftp_req, struct session *ptr)
 {
         if (ptr->state == st_login || ptr->state == st_passwd) {
@@ -598,7 +630,7 @@ void execute_cmd(struct session *ptr, const char *cmdstring)
                 ftp_dele, ftp_fail, ftp_help, ftp_list, ftp_mdtm,
                 ftp_mkd,  ftp_nlst, ftp_noop, ftp_pass, ftp_pasv,
                 ftp_port, ftp_pwd,  ftp_quit, ftp_rein, ftp_retr,
-                ftp_rmd,  ftp_rnfr, ftp_rnto, ftp_size, ftp_fail,
+                ftp_rmd,  ftp_rnfr, ftp_rnto, ftp_size, ftp_stat,
                 ftp_stor, ftp_fail, ftp_syst, ftp_type, ftp_user
         };
         struct ftp_request ftp_req;

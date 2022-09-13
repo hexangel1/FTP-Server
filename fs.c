@@ -134,6 +134,19 @@ long get_file_size(const char *path, int dir_fd)
         return st_buf.st_size;
 }
 
+int is_directory(const char *path, int dir_fd)
+{
+        struct stat st_buf;
+        int res;
+        res = fstatat(dir_fd, path, &st_buf, 0);
+        return res != -1 ? S_ISDIR(st_buf.st_mode) : 0;
+}
+
+int open_directory(const char *path, int dir_fd)
+{
+        return openat(dir_fd, path, O_RDONLY | O_DIRECTORY);
+}
+
 int create_directory(const char *path, int dir_fd)
 {
         return mkdirat(dir_fd, path, 0755);
@@ -156,6 +169,6 @@ int rename_file(const char *oldpath, const char *newpath, int dir_fd)
 
 int get_current_dir_fd(void)
 {
-        return open(".", O_RDONLY | O_DIRECTORY);
+        return open_directory(".", AT_FDCWD);
 }
 

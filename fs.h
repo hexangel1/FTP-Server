@@ -16,6 +16,12 @@ int get_directory_path(char *buf, int size, int dir_fd);
 /* returns file size by path in directory associated with dir_fd */
 long get_file_size(const char *path, int dir_fd);
 
+/* returns 1 if path is directory */
+int is_directory(const char *path, int dir_fd);
+
+/* opens directory by path in directory associated with dir_fd */
+int open_directory(const char *path, int dir_fd);
+
 /* creates directory by path in directory associated with dir_fd */
 int create_directory(const char *path, int dir_fd);
 
