@@ -105,10 +105,11 @@ static void run_process(ftp_routine child, struct session *sess, const char *f)
                 conn = make_connection(sess);
                 if (conn == -1) {
                         send_string(sess, "451 Connection failed.\n");
-                        exit(1);
+                        exit(EXIT_FAILURE);
                 }
                 fchdir(sess->curr_dir);
                 code = child(sess, conn, f);
+                tcp_shutdown(conn);
                 exit(code);
         }
         sess->txrx_pid = pid;
@@ -123,6 +124,7 @@ static int list_directory(struct session *sess, int conn, const char *dirname)
         int res, dir_fd;
         dirp = opendir(dirname);
         if (!dirp) {
+                perror(dirname);
                 send_string(sess, "550 Failed to open directory.\n");
                 return 1;
         }
@@ -134,7 +136,6 @@ static int list_directory(struct session *sess, int conn, const char *dirname)
                         tcp_send(conn, buf, strlen(buf));
         }
         send_string(sess, "226 Closing data connetion.\n");
-        tcp_shutdown(conn);
         closedir(dirp);
         return 0;
 }
@@ -145,6 +146,7 @@ static int nlst_directory(struct session *sess, int conn, const char *dirname)
         struct dirent *dent;
         dirp = opendir(dirname);
         if (!dirp) {
+                perror(dirname);
                 send_string(sess, "550 Failed to open directory.\n");
                 return 1;
         }
@@ -154,7 +156,6 @@ static int nlst_directory(struct session *sess, int conn, const char *dirname)
                 tcp_send(conn, "\r\n", 2);
         }
         send_string(sess, "226 Closing data connetion.\n");
-        tcp_shutdown(conn);
         closedir(dirp);
         return 0;
 }
@@ -164,14 +165,12 @@ static int file_download(struct session *sess, int conn, const char *filename)
         int fd, res;
         fd = open(filename, O_RDONLY);
         if (fd == -1) {
-                perror("open");
-                tcp_shutdown(conn);
-                send_string(sess, "550 Failed to get file.\n");
+                perror(filename);
+                send_string(sess, "550 Requested file not opened.\n");
                 return 1;
         }
         send_string(sess, "125 Data connection opened, transfer starting.\n");
         res = tcp_transmit(conn, fd);
-        tcp_shutdown(conn);
         close(fd);
         if (res == -1) {
                 send_string(sess, "451 File transmission failed.\n");
@@ -186,14 +185,12 @@ static int file_upload(struct session *sess, int conn, const char *filename)
         int fd, res;
         fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd == -1) {
-                perror("open");
-                tcp_shutdown(conn);
-                send_string(sess, "553 No such file or directory.\n");
+                perror(filename);
+                send_string(sess, "550 Requested file not opened.\n");
                 return 1;
         }
         send_string(sess, "125 Data connection opened, transfer starting.\n");
         res = tcp_receive(conn, fd);
-        tcp_shutdown(conn);
         close(fd);
         if (res == -1) {
                 send_string(sess, "451 File transmission failed.\n");
@@ -208,14 +205,12 @@ static int file_append(struct session *sess, int conn, const char *filename)
         int fd, res;
         fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd == -1) {
-                perror("open");
-                tcp_shutdown(conn);
-                send_string(sess, "553 No such file or directory.\n");
+                perror(filename);
+                send_string(sess, "550 Requested file not opened.\n");
                 return 1;
         }
         send_string(sess, "125 Data connection opened, transfer starting.\n");
         res = tcp_receive(conn, fd);
-        tcp_shutdown(conn);
         close(fd);
         if (res == -1) {
                 send_string(sess, "451 File transmission failed.\n");
