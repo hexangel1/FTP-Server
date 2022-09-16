@@ -7,7 +7,7 @@
 #define MAXARGLEN 1023
 
 #define FTP_COMMAND_HANDLER(cmd) \
-        void ftp_ ## cmd(struct ftp_request *ftp_req, struct session *ptr)
+        void ftp_ ## cmd(struct session *sess, struct ftp_request *request)
 
 struct ftp_request {
         int cmd_idx;
@@ -17,14 +17,14 @@ struct ftp_request {
 
 struct session;
 
-typedef int  (*ftp_routine) (const char *, int, struct session *);
-typedef void (*ftp_handler) (struct ftp_request *, struct session *);
+typedef int  (*ftp_routine) (struct session *sess, int, const char *);
+typedef void (*ftp_handler) (struct session *sess, struct ftp_request *);
 
 extern const char *const ftp_greet_message;
 extern const char *const ftp_error_message;
 
 /* executes ftp command */
-void execute_cmd(struct session *ptr, const char *cmdstring);
+void execute_cmd(struct session *sess, const char *cmdstring);
 
 #endif /* FTP_H_SENTRY */
 
