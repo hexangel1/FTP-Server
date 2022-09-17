@@ -51,14 +51,15 @@ static int check_username(const char *username)
 static void parse_command(struct ftp_request *request, const char *cmdstring)
 {
         int i;
-        for (i = 0; *cmdstring && !isspace(*cmdstring) && i < MAXCMDLEN; i++) {
+        for (i = 0; *cmdstring && i < MAX_CMD_LEN - 1; cmdstring++, i++) {
+                if (isspace(*cmdstring))
+                        break;
                 request->cmd[i] = *cmdstring;
-                cmdstring++;
         }
         request->cmd[i] = 0;
         for (cmdstring++; *cmdstring && isspace(*cmdstring); cmdstring++)
                 ;
-        for (i = 0; *cmdstring && i < MAXARGLEN; cmdstring++, i++)
+        for (i = 0; *cmdstring && i < MAX_ARG_LEN - 1; cmdstring++, i++)
                 request->arg[i] = *cmdstring;
         request->arg[i] = 0;
         request->cmd_idx = search_command(request->cmd);
@@ -108,7 +109,7 @@ static void run_process(ftp_routine child, struct session *sess, const char *f)
                         exit(EXIT_FAILURE);
                 }
                 fchdir(sess->curr_dir);
-                code = child(sess, conn, f);
+                code = child(sess, f, conn);
                 tcp_shutdown(conn);
                 exit(code);
         }
@@ -116,7 +117,7 @@ static void run_process(ftp_routine child, struct session *sess, const char *f)
         transfer_mode_reset(sess);
 }
 
-static int list_directory(struct session *sess, int conn, const char *dirname)
+static int list_directory(struct session *sess, const char *dirname, int conn)
 {
         DIR *dirp;
         struct dirent *dent;
@@ -140,7 +141,7 @@ static int list_directory(struct session *sess, int conn, const char *dirname)
         return 0;
 }
 
-static int nlst_directory(struct session *sess, int conn, const char *dirname)
+static int nlst_directory(struct session *sess, const char *dirname, int conn)
 {
         DIR *dirp;
         struct dirent *dent;
@@ -160,7 +161,7 @@ static int nlst_directory(struct session *sess, int conn, const char *dirname)
         return 0;
 }
 
-static int file_download(struct session *sess, int conn, const char *filename)
+static int file_download(struct session *sess, const char *filename, int conn)
 {
         int fd, res;
         fd = open(filename, O_RDONLY);
@@ -180,7 +181,7 @@ static int file_download(struct session *sess, int conn, const char *filename)
         return 0;
 }
 
-static int file_upload(struct session *sess, int conn, const char *filename)
+static int file_upload(struct session *sess, const char *filename, int conn)
 {
         int fd, res;
         fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -200,7 +201,7 @@ static int file_upload(struct session *sess, int conn, const char *filename)
         return 0;
 }
 
-static int file_append(struct session *sess, int conn, const char *filename)
+static int file_append(struct session *sess, const char *filename, int conn)
 {
         int fd, res;
         fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0644);

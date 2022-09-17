@@ -3,21 +3,21 @@
 
 #define MIN_PORT_NUM 49152
 #define MAX_PORT_NUM 65535
-#define MAXCMDLEN 7
-#define MAXARGLEN 1023
+#define MAX_CMD_LEN 8
+#define MAX_ARG_LEN 1024
 
 #define FTP_COMMAND_HANDLER(cmd) \
         void ftp_ ## cmd(struct session *sess, struct ftp_request *request)
 
 struct ftp_request {
         int cmd_idx;
-        char cmd[MAXCMDLEN + 1];
-        char arg[MAXARGLEN + 1];
+        char cmd[MAX_CMD_LEN];
+        char arg[MAX_ARG_LEN];
 };
 
 struct session;
 
-typedef int  (*ftp_routine) (struct session *sess, int, const char *);
+typedef int  (*ftp_routine) (struct session *sess, const char *, int);
 typedef void (*ftp_handler) (struct session *sess, struct ftp_request *);
 
 extern const char *const ftp_greet_message;
