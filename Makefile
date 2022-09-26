@@ -31,7 +31,7 @@ memcheck: $(PROJECT)
 	valgrind -s --leak-check=full ./$(PROJECT) $(ARGV)
 
 systrace: $(PROJECT)
-	strace -f ./$(PROJECT) $(ARGV)
+	strace -Cwf ./$(PROJECT) $(ARGV)
 
 stop:
 	pkill -SIGTERM $(PROJECT)

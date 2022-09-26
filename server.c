@@ -13,6 +13,7 @@
 #include "ftp.h"
 #include "tcp.h"
 #include "fs.h"
+#include "tree.h"
 
 int ppoll(struct pollfd *fds, nfds_t nfds,
           const struct timespec *tmo_p, const sigset_t *sigmask);
@@ -170,7 +171,7 @@ static void remove_zombies(struct tcp_server *serv)
         }
 }
 
-static void check_lf(struct session *ptr)
+static void check_lf(struct tcp_server *serv, struct session *ptr)
 {
         int pos, i;
         char *str;
@@ -192,7 +193,7 @@ static void check_lf(struct session *ptr)
                 if (pos && str[pos - 1] == '\r')
                         str[pos - 1] = 0;
                 fprintf(stderr, "%s\n", str);
-                execute_cmd(ptr, str);
+                execute_cmd(ptr, str, serv->cmd_index);
                 free(str);
         }
 }
@@ -206,7 +207,7 @@ static void receive_data(struct tcp_server *serv, struct session *ptr)
                 return;
         }
         ptr->buf_used += rc;
-        check_lf(ptr);
+        check_lf(serv, ptr);
         if (ptr->buf_used >= INBUFSIZE) {
                 send_string(ptr, ftp_error_message);
                 ptr->buf_used = 0;
@@ -286,6 +287,7 @@ int tcp_server_up(struct tcp_server *serv)
         if (serv->listen_sock == -1)
                 return -1;
         register_sigactions(&serv->sigmask);
+        build_cmd_index(&serv->cmd_index);
         srand(time(NULL));
         return 0;
 }
@@ -294,6 +296,7 @@ void tcp_server_down(struct tcp_server *serv)
 {
         tcp_shutdown(serv->listen_sock);
         delete_all_sessions(serv->sess);
+        tree_free(serv->cmd_index);
         if (serv->fds)
                 free(serv->fds);
         free(serv->ipaddr);

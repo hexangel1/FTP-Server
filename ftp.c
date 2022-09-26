@@ -10,33 +10,15 @@
 #include "ftp.h"
 #include "tcp.h"
 #include "fs.h"
+#include "tree.h"
 #include "server.h"
 
 const char *const ftp_greet_message = "220 Service ready for new user.\n";
 const char *const ftp_error_message = "500 Command line too long.\n";
 
-static const char *const cmd_table[] = {
-        "ABOR", "ALLO", "APPE", "CDUP", "CWD",
-        "DELE", "EPSV", "HELP", "LIST", "MDTM",
-        "MKD",  "NLST", "NOOP", "PASS", "PASV",
-        "PORT", "PWD",  "QUIT", "REIN", "RETR",
-        "RMD",  "RNFR", "RNTO", "SIZE", "STAT",
-        "STOR", "STRU", "SYST", "TYPE", "USER"
-};
-
 static const char *const user_table[] = {
         "anonymous", "admin", "user", "test"
 };
-
-static int search_command(const char *cmd_name)
-{
-        int i, cmd_table_size = sizeof(cmd_table) / sizeof(*cmd_table);
-        for (i = 0; i < cmd_table_size; i++) {
-                if (!strcmp(cmd_table[i], cmd_name))
-                        return i;
-        }
-        return -1;
-}
 
 static int check_username(const char *username)
 {
@@ -62,7 +44,6 @@ static void parse_command(struct ftp_request *request, const char *cmdstring)
         for (i = 0; *cmdstring && i < MAX_ARG_LEN - 1; cmdstring++, i++)
                 request->arg[i] = *cmdstring;
         request->arg[i] = 0;
-        request->cmd_idx = search_command(request->cmd);
 }
 
 static int make_connection(struct session *sess)
@@ -299,16 +280,12 @@ static FTP_COMMAND_HANDLER(dele)
 
 static FTP_COMMAND_HANDLER(help)
 {
-        int cmd_table_size = sizeof(cmd_table) / sizeof(*cmd_table);
-        int i, used = 4;
-        strcpy(sess->sendbuf, "220 ");
-        for (i = 0; i < cmd_table_size; i++) {
-                strcpy(sess->sendbuf + used, cmd_table[i]);
-                used += strlen(cmd_table[i]);
-                sess->sendbuf[used] = i == cmd_table_size - 1 ? '\n' : ' ';
-                used++;
-        }
-        send_buffer(sess);
+        send_string(sess, "125 Use commands: ");
+        send_string(sess, "ABOR ALLO APPE CDUP CWD DELE ");
+        send_string(sess, "EPSV HELP LIST MDTM MKD NLST ");
+        send_string(sess, "NOOP PASS PASV PORT PWD QUIT ");
+        send_string(sess, "REIN RETR RMD RNFR RNTO SIZE ");
+        send_string(sess, "STAT STOR STRU SYST TYPE USER\n");
 }
 
 static FTP_COMMAND_HANDLER(list)
@@ -622,7 +599,7 @@ static FTP_COMMAND_HANDLER(fail)
         send_string(sess, "502 Not implemented.\n");
 }
 
-void execute_cmd(struct session *sess, const char *cmdstring)
+void execute_cmd(struct session *sess, const char *cmd, struct tree_node *root)
 {
         static const ftp_handler handlers[] = {
                 ftp_abor, ftp_allo, ftp_appe, ftp_cdup, ftp_cwd,
@@ -633,11 +610,28 @@ void execute_cmd(struct session *sess, const char *cmdstring)
                 ftp_stor, ftp_fail, ftp_syst, ftp_type, ftp_user
         };
         struct ftp_request request;
-        parse_command(&request, cmdstring);
-        if (request.cmd_idx == -1) {
+        int cmd_no;
+        parse_command(&request, cmd);
+        cmd_no = tree_get(root, request.cmd);
+        if (cmd_no == -1) {
                 send_string(sess, "202 Unknown command.\n");
                 return;
         }
-        handlers[request.cmd_idx](sess, &request);
+        handlers[cmd_no](sess, &request);
+}
+
+void build_cmd_index(struct tree_node **root)
+{
+        static const char *const cmd_table[] = {
+                "ABOR", "ALLO", "APPE", "CDUP", "CWD",
+                "DELE", "EPSV", "HELP", "LIST", "MDTM",
+                "MKD",  "NLST", "NOOP", "PASS", "PASV",
+                "PORT", "PWD",  "QUIT", "REIN", "RETR",
+                "RMD",  "RNFR", "RNTO", "SIZE", "STAT",
+                "STOR", "STRU", "SYST", "TYPE", "USER"
+        };
+        int i, cmd_table_size = sizeof(cmd_table) / sizeof(*cmd_table);
+        for (i = 0; i < cmd_table_size; i++)
+                tree_set(root, cmd_table[i], i);
 }
 

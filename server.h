@@ -49,6 +49,7 @@ struct tcp_server {
         int nfds;
         struct pollfd *fds;
         struct session *sess;
+        struct tree_node *cmd_index;
 };
 
 /* handles signals, listening socket and client connections */
