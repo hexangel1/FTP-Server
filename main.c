@@ -9,7 +9,10 @@
 #include <sys/resource.h>
 #include "server.h"
 
-#ifdef BUILD_DAEMON
+static int daemon_state = 0;
+static const char *ip_addr = "127.0.0.1";
+static unsigned short port = 2000;
+
 static void daemonize(void)
 {
         int res, fd, fd_max = 1024;
@@ -32,40 +35,65 @@ static void daemonize(void)
         openlog("ftpservd", LOG_CONS | LOG_PID, LOG_DAEMON);
         syslog(LOG_INFO, "Daemon started, pid == %d", getpid());
 }
-#endif
 
-static void goodbye_message(const char *message)
+static int get_command_line_options(int argc, char **argv)
 {
-#ifdef BUILD_DAEMON
-        syslog(LOG_INFO, "%s", message);
-        closelog();
-#else
-        fputs(message, stderr);
-        fputc('\n', stderr);
-#endif
+        int opt, retval = 0;
+        while ((opt = getopt(argc, argv, ":di:p:")) != -1) {
+                switch (opt) {
+                case 'd':
+                        daemon_state = 1;
+                        break;
+                case 'i':
+                        ip_addr = optarg;
+                        break;
+                case 'p':
+                        port = atoi(optarg);
+                        break;
+                case ':':
+                        fprintf(stderr,
+                                "Option -%c requires an operand\n", optopt);
+                        retval = -1;
+                        break;
+                case '?':
+                        fprintf(stderr, "Unrecognized option: -%c\n", optopt);
+                        retval = -1;
+                        break;
+                }
+        }
+        return retval;
+}
+
+static void log_message(const char *message)
+{
+        if (daemon_state) {
+                syslog(LOG_INFO, "%s", message);
+                closelog();
+        }
+        fprintf(stderr, "%s\n", message);
 }
 
 int main(int argc, char **argv)
 {
         int res;
         struct tcp_server *serv;
-#ifdef BUILD_DAEMON
-        daemonize();
-#endif
-        if (argc != 3) {
-                goodbye_message("Usage: server [ip] [port]");
-                exit(1);
+        res = get_command_line_options(argc, argv);
+        if (res == -1) {
+                fprintf(stderr, "Usage: ftpserv [-d] [-i ipaddr] [-p port]\n");
+                exit(EXIT_FAILURE);
         }
-        serv = new_tcp_server(argv[1], atoi(argv[2]));
+        if (daemon_state)
+                daemonize();
+        serv = new_tcp_server(ip_addr, port);
         res = tcp_server_up(serv);
         if (res == -1) {
-                goodbye_message("Failed to bring server up");
-                exit(1);
+                log_message("Failed to bring server up");
+                exit(EXIT_FAILURE);
         }
-        fputs("running...\n", stderr);
+        log_message("running...");
         tcp_server_handle(serv);
         tcp_server_down(serv);
-        goodbye_message("Gracefully stopped");
+        log_message("Gracefully stopped");
         return 0;
 }
 
