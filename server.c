@@ -193,7 +193,7 @@ static void check_lf(struct tcp_server *serv, struct session *ptr)
                 if (pos && str[pos - 1] == '\r')
                         str[pos - 1] = 0;
                 fprintf(stderr, "%s\n", str);
-                execute_cmd(ptr, str, serv->cmd_index);
+                execute_cmd(ptr, str, serv->cmdind);
                 free(str);
         }
 }
@@ -287,7 +287,7 @@ int tcp_server_up(struct tcp_server *serv)
         if (serv->listen_sock == -1)
                 return -1;
         register_sigactions(&serv->sigmask);
-        build_cmd_index(&serv->cmd_index);
+        build_cmd_index(&serv->cmdind);
         srand(time(NULL));
         return 0;
 }
@@ -296,7 +296,7 @@ void tcp_server_down(struct tcp_server *serv)
 {
         tcp_shutdown(serv->listen_sock);
         delete_all_sessions(serv->sess);
-        tree_free(serv->cmd_index);
+        tree_free(serv->cmdind);
         if (serv->fds)
                 free(serv->fds);
         free(serv->ipaddr);
@@ -313,6 +313,7 @@ struct tcp_server *new_tcp_server(const char *ip, unsigned short port)
         serv->nfds = 0;
         serv->fds = NULL;
         serv->sess = NULL;
+        serv->cmdind = NULL;
         return serv;
 }
 
