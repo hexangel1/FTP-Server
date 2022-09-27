@@ -36,6 +36,15 @@ static void daemonize(void)
         syslog(LOG_INFO, "Daemon started, pid == %d", getpid());
 }
 
+static void write_log(const char *message)
+{
+        if (daemon_state) {
+                syslog(LOG_INFO, "%s", message);
+                closelog();
+        }
+        fprintf(stderr, "%s\n", message);
+}
+
 static int get_command_line_options(int argc, char **argv)
 {
         int opt, retval = 0;
@@ -64,15 +73,6 @@ static int get_command_line_options(int argc, char **argv)
         return retval;
 }
 
-static void log_message(const char *message)
-{
-        if (daemon_state) {
-                syslog(LOG_INFO, "%s", message);
-                closelog();
-        }
-        fprintf(stderr, "%s\n", message);
-}
-
 int main(int argc, char **argv)
 {
         int res;
@@ -87,13 +87,13 @@ int main(int argc, char **argv)
         serv = new_tcp_server(ip_addr, port);
         res = tcp_server_up(serv);
         if (res == -1) {
-                log_message("Failed to bring server up");
+                write_log("Failed to bring server up");
                 exit(EXIT_FAILURE);
         }
-        log_message("running...");
+        write_log("Running...");
         tcp_server_handle(serv);
         tcp_server_down(serv);
-        log_message("Gracefully stopped");
+        write_log("Gracefully stopped");
         return 0;
 }
 

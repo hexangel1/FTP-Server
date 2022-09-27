@@ -1,4 +1,4 @@
-PROJECT = ftpservd
+PROJECT = ftpserv
 SOURCES = $(wildcard *.c)
 HEADERS = $(filter-out main.h, $(SOURCES:.c=.h))
 OBJECTS = $(SOURCES:.c=.o)

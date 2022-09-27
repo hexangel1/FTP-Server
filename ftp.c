@@ -280,12 +280,14 @@ static FTP_COMMAND_HANDLER(dele)
 
 static FTP_COMMAND_HANDLER(help)
 {
-        send_string(sess, "125 Use commands: ");
-        send_string(sess, "ABOR ALLO APPE CDUP CWD DELE ");
-        send_string(sess, "EPSV HELP LIST MDTM MKD NLST ");
-        send_string(sess, "NOOP PASS PASV PORT PWD QUIT ");
-        send_string(sess, "REIN RETR RMD RNFR RNTO SIZE ");
-        send_string(sess, "STAT STOR STRU SYST TYPE USER\n");
+        send_string(sess,
+                "220 Use commands: "
+                "ABOR ALLO APPE CDUP CWD DELE "
+                "EPSV HELP LIST MDTM MKD NLST "
+                "NOOP PASS PASV PORT PWD QUIT "
+                "REIN RETR RMD RNFR RNTO SIZE "
+                "STAT STOR STRU SYST TYPE USER\n"
+        );
 }
 
 static FTP_COMMAND_HANDLER(list)
