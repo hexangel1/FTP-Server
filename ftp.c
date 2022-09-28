@@ -46,6 +46,12 @@ static void parse_command(struct ftp_request *request, const char *cmdstring)
         request->arg[i] = 0;
 }
 
+static unsigned short generate_port_number(void)
+{
+        return MIN_PORT_NUM + (int)((double)(MAX_PORT_NUM - MIN_PORT_NUM + 1) *
+                                    rand() / (RAND_MAX + 1.0));
+}
+
 static int make_connection(struct session *sess)
 {
         int conn = -1;
@@ -372,7 +378,7 @@ static FTP_COMMAND_HANDLER(pasv)
         if (sess->sock_pasv != -1)
                 tcp_shutdown(sess->sock_pasv);
         host = get_host_ip(sess->socket_d);
-        port = MIN_PORT_NUM + rand() % (MAX_PORT_NUM - MIN_PORT_NUM + 1);
+        port = generate_port_number();
         sess->sock_pasv = tcp_create_socket(host, port);
         sscanf(host ,"%d.%d.%d.%d", &ip[0], &ip[1], &ip[2], &ip[3]);
         snprintf(sess->sendbuf, OUTBUFSIZE,
