@@ -54,15 +54,16 @@ static void register_sigactions(sigset_t *origmask)
         sigprocmask(SIG_BLOCK, &mask, origmask);
 }
 
-static struct session *create_session(int idx, int fd, const char *addr)
+static struct session *create_session(int idx, int sockfd)
 {
         struct session *ptr = malloc(sizeof(*ptr));
         ptr->fds_idx = idx;
-        ptr->socket_d = fd;
+        ptr->socket_d = sockfd;
         ptr->curr_dir = get_current_dir_fd();
         ptr->txrx_pid = 0;
         ptr->buf_used = 0;
-        strncpy(ptr->address, addr, sizeof(ptr->address));
+        ptr->ipaddr = strdup(get_peer_ip(sockfd));
+        ptr->port = get_peer_port(sockfd);
         memset(ptr->ip_actv, 0, sizeof(ptr->ip_actv));
         ptr->port_actv = 0;
         ptr->sock_pasv = -1;
@@ -84,6 +85,7 @@ static void delete_session(struct session *ptr)
                 free(ptr->username);
         if (ptr->token)
                 free(ptr->token);
+        free(ptr->ipaddr);
         free(ptr);
 }
 
@@ -218,18 +220,17 @@ static void accept_connection(struct tcp_server *serv)
 {
         int idx, sockfd;
         struct session *tmp;
-        char address[ADDRESS_LEN];
-        sockfd = tcp_accept(serv->listen_sock, address, sizeof(address));
+        sockfd = tcp_accept(serv->listen_sock);
         if (sockfd == -1) {
                 fprintf(stderr, "connection failed\n");
                 return;
         }
         idx = start_poll_fd(serv, sockfd);
-        tmp = create_session(idx, sockfd, address);
+        tmp = create_session(idx, sockfd);
         tmp->next = serv->sess;
         serv->sess = tmp;
         send_string(tmp, ftp_greet_message);
-        fprintf(stderr, "connection from %s\n", address);
+        fprintf(stderr, "connection from %s:%d\n", tmp->ipaddr, tmp->port);
 }
 
 static int handle_signal_event(struct tcp_server *serv)

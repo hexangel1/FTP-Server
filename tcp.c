@@ -37,6 +37,30 @@ const char *get_host_ip(int sockfd)
         return get_ip_address(&addr);
 }
 
+const char *get_peer_ip(int sockfd)
+{
+        struct sockaddr_in addr;
+        socklen_t addrlen = sizeof(struct sockaddr_in);
+        getpeername(sockfd, (struct sockaddr *)&addr, &addrlen);
+        return get_ip_address(&addr);
+}
+
+unsigned short get_host_port(int sockfd)
+{
+        struct sockaddr_in addr;
+        socklen_t addrlen = sizeof(struct sockaddr_in);
+        getsockname(sockfd, (struct sockaddr *)&addr, &addrlen);
+        return get_port(&addr);
+}
+
+unsigned short get_peer_port(int sockfd)
+{
+        struct sockaddr_in addr;
+        socklen_t addrlen = sizeof(struct sockaddr_in);
+        getpeername(sockfd, (struct sockaddr *)&addr, &addrlen);
+        return get_port(&addr);
+}
+
 int tcp_create_socket(const char *ipaddr, unsigned short port)
 {
         int ls, res, opt = 1;
@@ -74,7 +98,7 @@ int tcp_connect(const char *ipaddr, unsigned short port)
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
         if (!inet_pton(AF_INET, ipaddr, &addr.sin_addr)) {
-                fprintf(stderr,"Invalid ip address\n");
+                fprintf(stderr, "Invalid ip address\n");
                 return -1;
         }
         sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
@@ -90,7 +114,7 @@ int tcp_connect(const char *ipaddr, unsigned short port)
         return sockfd;
 }
 
-int tcp_accept(int ls, char *address, int len)
+int tcp_accept(int ls)
 {
         struct sockaddr_in addr;
         socklen_t addrlen = sizeof(struct sockaddr_in);
@@ -99,9 +123,6 @@ int tcp_accept(int ls, char *address, int len)
                 perror("accept");
                 return -1;
         }
-        if (address)
-                snprintf(address, len, "%s:%d",
-                         get_ip_address(&addr), get_port(&addr));
         return sockfd;
 }
 

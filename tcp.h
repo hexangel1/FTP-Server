@@ -6,6 +6,15 @@
 /* returns host ip address */
 const char *get_host_ip(int sockfd);
 
+/* returns peer ip address */
+const char *get_peer_ip(int sockfd);
+
+/* returns host port number */
+unsigned short get_host_port(int sockfd);
+
+/* returns peer port number */
+unsigned short get_peer_port(int sockfd);
+
 /* creates listening socket */
 int tcp_create_socket(const char *ipaddr, unsigned short port);
 
@@ -13,7 +22,7 @@ int tcp_create_socket(const char *ipaddr, unsigned short port);
 int tcp_connect(const char *ipaddr, unsigned short port);
 
 /* accepts connection on listening socket ls */
-int tcp_accept(int ls, char *address, int len);
+int tcp_accept(int ls);
 
 /* shutdown connection */
 void tcp_shutdown(int sockfd);

@@ -4,8 +4,7 @@
 #include <signal.h>
 
 #define INBUFSIZE 1024
-#define OUTBUFSIZE 512
-#define ADDRESS_LEN 32
+#define OUTBUFSIZE 4096
 
 enum signal_event {
         sigev_no_events,
@@ -31,7 +30,8 @@ struct session {
         int buf_used;
         char buf[INBUFSIZE];
         char sendbuf[OUTBUFSIZE];
-        char address[ADDRESS_LEN];
+        char *ipaddr;
+        unsigned short port;
         char ip_actv[32];
         int port_actv;
         int sock_pasv;

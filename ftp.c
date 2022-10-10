@@ -56,7 +56,7 @@ static int make_connection(struct session *sess)
 {
         int conn = -1;
         if (sess->state == st_passive) {
-                conn = tcp_accept(sess->sock_pasv, NULL, 0);
+                conn = tcp_accept(sess->sock_pasv);
                 tcp_shutdown(sess->sock_pasv);
         } else if (sess->state == st_active) {
                 conn = tcp_connect(sess->ip_actv, sess->port_actv);
@@ -333,7 +333,7 @@ static FTP_COMMAND_HANDLER(mkd)
                 perror("create_directory");
                 send_string(sess, "550 Directory create failed.\n");
         } else {
-                sprintf(sess->buf, "257 %s created.\n", request->arg);
+                sprintf(sess->sendbuf, "257 %s created.\n", request->arg);
                 send_buffer(sess);
         }
 }
