@@ -43,7 +43,7 @@ static void get_user_group(char *buf, int len, int uid, int gid)
         if (pw && gr)
                 snprintf(buf, len, "%-8s %-8s", pw->pw_name, gr->gr_name);
         else
-                snprintf(buf, len, "%-5d %-5d", uid, gid);
+                snprintf(buf, len, "%-6d %-6d", uid, gid);
 }
 
 static void get_modify_time(char *buf, int len, time_t rawtime)
@@ -65,7 +65,7 @@ int str_file_info(char *buf, int len, const char *name, int dir_fd)
         get_user_group(usrgrpbuf, sizeof(usrgrpbuf),
                        st_buf.st_uid, st_buf.st_gid);
         get_modify_time(mtimebuf, sizeof(mtimebuf), st_buf.st_mtime);
-        snprintf(buf, len, "%c%s %4ld %s %8ld %s %s\r\n",
+        snprintf(buf, len, "%c%-9s %4ld %s %9ld %s %s\r\n",
                  get_file_type(st_buf.st_mode), perms, st_buf.st_nlink,
                  usrgrpbuf, st_buf.st_size, mtimebuf, name);
         return 0;

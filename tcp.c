@@ -109,6 +109,7 @@ int tcp_connect(const char *ipaddr, unsigned short port)
         res = connect(sockfd, (struct sockaddr *)&addr, sizeof(addr));
         if (res == -1) {
                 perror("connect");
+                close(sockfd);
                 return -1;
         }
         return sockfd;
@@ -119,10 +120,8 @@ int tcp_accept(int ls)
         struct sockaddr_in addr;
         socklen_t addrlen = sizeof(struct sockaddr_in);
         int sockfd = accept(ls, (struct sockaddr *)&addr, &addrlen);
-        if (sockfd == -1) {
+        if (sockfd == -1)
                 perror("accept");
-                return -1;
-        }
         return sockfd;
 }
 
@@ -182,10 +181,11 @@ int tcp_receive(int sockfd, int fd)
         return 0;
 }
 #else
+#define TCP_BUFFER_SIZE 4096
 int tcp_transmit(int sockfd, int fd)
 {
         ssize_t rc, wc;
-        char buf[4096];
+        char buf[TCP_BUFFER_SIZE];
         while ((rc = read(fd, buf, sizeof(buf))) > 0) {
                 wc = send(sockfd, buf, rc, 0);
                 if (wc != rc) {
@@ -203,7 +203,7 @@ int tcp_transmit(int sockfd, int fd)
 int tcp_receive(int sockfd, int fd)
 {
         ssize_t rc, wc;
-        char buf[4096];
+        char buf[TCP_BUFFER_SIZE];
         while ((rc = recv(sockfd, buf, sizeof(buf), 0)) > 0) {
                 wc = write(fd, buf, rc);
                 if (wc != rc) {
