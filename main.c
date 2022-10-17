@@ -34,14 +34,13 @@ static void daemonize(void)
                 exit(0);
         openlog("ftpservd", LOG_CONS | LOG_PID, LOG_DAEMON);
         syslog(LOG_INFO, "Daemon started, pid == %d", getpid());
+        atexit(&closelog);
 }
 
 static void write_log(const char *message)
 {
-        if (daemon_state) {
+        if (daemon_state)
                 syslog(LOG_INFO, "%s", message);
-                closelog();
-        }
         fprintf(stderr, "%s\n", message);
 }
 
